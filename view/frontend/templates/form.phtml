@@ -1,0 +1,137 @@
+<?php
+
+$setting = $block->getPaymentConfig();
+$merchantid     = $setting['merchantid'] ?? '';
+$installationid = $setting['installationid'] ?? '';
+$apikey         = $block->getPaymentConfig('apikey') ?? '';
+error_log("merchant_id = {$merchantid}\n");
+error_log("installation_id = {$installationid}\n");
+error_log("api_key = {$apikey}\n");
+if ($merchantid === '' || $installationid === '' || $apikey === '') {
+    die( 'Reservepay Payment gateway is not configured properly. All of merchant id, installation id, and api key must be set with the correct value.' );
+}
+
+$order = $block->getOrder();
+if ( ! $order || ! $order->getId() ) {
+    die( 'Order not found.' );
+}
+
+$amount = (float) $order->getGrandTotal();
+error_log("Order amount = {$amount}");
+if (!$amount || $amount <= 0) {
+    die( 'Order not found.' );
+}
+
+// compute amount in minor unit (integer)
+$amount_minor = (int) round( (float) $amount * 100 );
+error_log("amount_minor = {$amount_minor}\n");
+
+$paymentsession_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentsession' ) );
+$paymentsuccess_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentsuccess' ) );
+$paymentfail_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentfail' ) );
+$checkout_url = $block->escapeUrl( $block->getUrl( 'checkout/cart' ) );
+$orderreceived_url = $block->escapeUrl( $block->getUrl( 'checkout/onepage/success') );
+
+// build a JS-safe payload via wp_json_encode
+$init_payload = json_encode( array(
+    'merchantId'         => $merchantid,
+    'installationId'     => $installationid,
+    'containerSelector'  => '#reservepay-payment-form',
+    'amount'             => $amount_minor,
+    'paymentsessionUrl'  => $paymentsession_url,
+    'paymentsuccessUrl'  => $paymentsuccess_url,
+    'paymentfailUrl'     => $paymentfail_url,
+    'orderId'            => $order->getId(),
+    'checkoutUrl'       => $checkout_url,
+    'orderreceivedUrl' => $orderreceived_url,
+) );
+?>
+
+<script src="https://sdk.reservepay.com/js/v1/reservepay.js"></script>
+<div id="reservepay-payment-form"></div>
+<script>
+(function() {
+    'use strict';
+
+    var data = <?php echo $init_payload; ?>;
+    console.log(data);
+
+    if (typeof window.Reservepay === 'undefined') {
+        console.error('Reservepay SDK not loaded.');
+        return;
+    }
+
+    window.Reservepay.initReservepayFormUI({
+        formType: 'embedded',
+        merchantId: String(data.merchantId),
+        installationId: String(data.installationId),
+        formOptions: {
+            containerSelector: data.containerSelector,
+            amount: String(data.amount),
+            async onPaymentSessionReady(sessionId) {
+                try {
+                    await fetch(data.paymentsessionUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            payment_session_id: sessionId,
+                            order_id: data.orderId,
+                        })
+                    });
+                    return;
+                } catch (e) {
+                    console.error('Error sending payment session to server', e);
+                }
+                window.location.href = data.checkoutUrl;
+            },
+            async onPaymentSuccess(sessionId) {
+                try {
+                    var response = await fetch(data.paymentsuccessUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            payment_session_id: sessionId,
+                            order_id: data.orderId,
+                        })
+                    });
+                    if (response.ok) {
+                        var status = await response.json();
+                        if (status === 'SUCCESSFUL') {
+                            // Redirect to Magento success page
+                            // window.location.href = '<?= $block->escapeUrl($block->getUrl('checkout/onepage/success')) ?>';
+                            window.location.href = data.orderreceivedUrl;
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error verifying payment success', e);
+                }
+                window.location.href = data.checkoutUrl;
+            },
+            async onPaymentFailed(sessionId) {
+                console.log('Payment failed with session ID:', sessionId);
+                try {
+                    var response = await fetch(data.paymentfailUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            payment_session_id: sessionId,
+                            order_id: data.orderId,
+                        })
+                    });
+                } catch (e) {
+                    console.error('Error handling payment failure', e);
+                }
+                console.log('Redirecting to ', data.checkoutUrl);
+                window.location.href = data.checkoutUrl;
+            }
+        }
+    });
+})();
+</script>
