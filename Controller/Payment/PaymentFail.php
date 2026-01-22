@@ -14,6 +14,7 @@ use Magento\Checkout\Model\Session as CheckoutSession;
 use Psr\Log\LoggerInterface;
 use Magento\Framework\Message\ManagerInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
+use Magento\Framework\Encryption\EncryptorInterface;
 
 class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
 {
@@ -26,6 +27,7 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
     protected $logger;
     protected $messageManager;
     protected $quoteRepository;
+    protected $encryptor;
 
     public function __construct(
         JsonFactory $jsonFactory,
@@ -37,6 +39,7 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
         LoggerInterface $logger,
         ManagerInterface $messageManager,
         CartRepositoryInterface $quoteRepository,
+        EncryptorInterface $encryptor
     ) {
         $this->jsonFactory = $jsonFactory;
         $this->request = $request;
@@ -47,12 +50,11 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
         $this->logger = $logger;
         $this->messageManager = $messageManager;
         $this->quoteRepository = $quoteRepository;
+        $this->encryptor = $encryptor;
     }
 
     public function execute()
     {
-        error_log("KEHKEH: Executing PaymentFail controller...\n");
-
         $result = $this->jsonFactory->create();
 
         try {
@@ -67,6 +69,15 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
             }
             if (!$orderId) {
                 throw new \Exception("Order ID is missing in request body.");
+            }
+
+            $token = $this->request->getCookie('payment_redirect_token');
+            if (!$token) {
+                throw new \Exception("Access Denied: Invalid order ID");
+            }
+            $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+            if ($orderId != $decryptedId) {
+                throw new \Exception("Access Denied: Invalid order ID");
             }
 
             $order = $this->orderRepository->get($orderId);

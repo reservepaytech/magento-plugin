@@ -4,9 +4,6 @@ $setting = $block->getPaymentConfig();
 $merchantid     = $setting['merchantid'] ?? '';
 $installationid = $setting['installationid'] ?? '';
 $apikey         = $block->getPaymentConfig('apikey') ?? '';
-error_log("merchant_id = {$merchantid}\n");
-error_log("installation_id = {$installationid}\n");
-error_log("api_key = {$apikey}\n");
 if ($merchantid === '' || $installationid === '' || $apikey === '') {
     die( 'Reservepay Payment gateway is not configured properly. All of merchant id, installation id, and api key must be set with the correct value.' );
 }
@@ -17,14 +14,12 @@ if ( ! $order || ! $order->getId() ) {
 }
 
 $amount = (float) $order->getGrandTotal();
-error_log("Order amount = {$amount}");
 if (!$amount || $amount <= 0) {
     die( 'Order not found.' );
 }
 
 // compute amount in minor unit (integer)
 $amount_minor = (int) round( (float) $amount * 100 );
-error_log("amount_minor = {$amount_minor}\n");
 
 $paymentsession_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentsession' ) );
 $paymentsuccess_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentsuccess' ) );
@@ -32,7 +27,6 @@ $paymentfail_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymen
 $checkout_url = $block->escapeUrl( $block->getUrl( 'checkout/cart' ) );
 $orderreceived_url = $block->escapeUrl( $block->getUrl( 'checkout/onepage/success') );
 
-// build a JS-safe payload via wp_json_encode
 $init_payload = json_encode( array(
     'merchantId'         => $merchantid,
     'installationId'     => $installationid,
@@ -101,8 +95,6 @@ $init_payload = json_encode( array(
                     if (response.ok) {
                         var status = await response.json();
                         if (status === 'SUCCESSFUL') {
-                            // Redirect to Magento success page
-                            // window.location.href = '<?= $block->escapeUrl($block->getUrl('checkout/onepage/success')) ?>';
                             window.location.href = data.orderreceivedUrl;
                             return;
                         }
@@ -113,7 +105,6 @@ $init_payload = json_encode( array(
                 window.location.href = data.checkoutUrl;
             },
             async onPaymentFailed(sessionId) {
-                console.log('Payment failed with session ID:', sessionId);
                 try {
                     var response = await fetch(data.paymentfailUrl, {
                         method: 'POST',
@@ -128,7 +119,6 @@ $init_payload = json_encode( array(
                 } catch (e) {
                     console.error('Error handling payment failure', e);
                 }
-                console.log('Redirecting to ', data.checkoutUrl);
                 window.location.href = data.checkoutUrl;
             }
         }

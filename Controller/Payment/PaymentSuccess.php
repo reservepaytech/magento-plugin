@@ -17,6 +17,10 @@ use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Sales\Model\Service\InvoiceService;
 use Magento\Framework\DB\Transaction;
 use Magento\Sales\Model\Order\Email\Sender\InvoiceSender;
+use Magento\Sales\Api\OrderManagementInterface;
+use Magento\Checkout\Model\Session as CheckoutSession;
+use Magento\Framework\Message\ManagerInterface;
+use Magento\Quote\Api\CartRepositoryInterface;
 
 class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterface
 {
@@ -31,6 +35,10 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
     protected $invoiceService;
     protected $transaction;
     protected $invoiceSender;
+    protected $orderManagement;
+    protected $checkoutSession;
+    protected $messageManager;
+    protected $quoteRepository;
 
     public function __construct(
         ScopeConfigInterface $scopeConfig,
@@ -44,6 +52,10 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         InvoiceService $invoiceService,
         Transaction $transaction,
         InvoiceSender $invoiceSender,
+        OrderManagementInterface $orderManagement,
+        CheckoutSession $checkoutSession,
+        ManagerInterface $messageManager,
+        CartRepositoryInterface $quoteRepository
     ) {
         $this->scopeConfig = $scopeConfig;
         $this->jsonFactory = $jsonFactory;
@@ -56,6 +68,10 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         $this->invoiceService = $invoiceService;
         $this->transaction = $transaction;
         $this->invoiceSender = $invoiceSender;
+        $this->orderManagement = $orderManagement;
+        $this->checkoutSession = $checkoutSession;
+        $this->messageManager = $messageManager;
+        $this->quoteRepository = $quoteRepository;
     }
 
     public function execute()
@@ -74,6 +90,15 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
             }
             if (!$orderId) {
                 throw new \Exception("Order ID is missing in request body.");
+            }
+
+            $token = $this->request->getCookie('payment_redirect_token');
+            if (!$token) {
+                throw new \Exception("Access Denied: Invalid order ID");
+            }
+            $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+            if ($orderId != $decryptedId) {
+                throw new \Exception("Access Denied: Invalid order ID");
             }
 
             $order = $this->orderRepository->get($orderId);
@@ -125,7 +150,29 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
             $status = $resp['status'] ?? 'UNKNOWN';
             $responseContent = $status;
 
-            $this->invoiceOrder($order);
+            if (strtolower($status) === 'successful') {
+                $this->invoiceOrder($order);
+            }
+            else {
+                if ($order->canCancel()) {
+                    $orderId = $order->getId();
+                    $this->orderManagement->cancel($orderId);
+                    $quoteId = $order->getQuoteId();
+                    if ($quoteId) {
+                        try {
+                            $quote = $this->quoteRepository->get($quoteId);
+                            $quote->setIsActive(1);
+                            $quote->setReservedOrderId(null);
+                            $this->quoteRepository->save($quote);
+                            $this->checkoutSession->replaceQuote($quote);
+                        } catch (\Exception $e) {
+                            error_log("Failed to restore quote: " . $e->getMessage() . "\n");
+                        }
+                    }
+                }
+                $this->messageManager->addErrorMessage(__('Payment failure was detected. Your order has been cancelled. Please try again or use a different payment method.'));
+                $responseContent = ['status' => 'cancelled', 'message' => 'Order has been cancelled due to payment failure.'];
+            }
 
         } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
             $responseContent = ['status' => 'fail', 'message' => 'Order not found.'];
@@ -153,20 +200,14 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
             $invoice->setRequestedCaptureCase(\Magento\Sales\Model\Order\Invoice::CAPTURE_OFFLINE);
             $invoice->register();
             $invoice->getOrder()->setIsInProcess(true);
-            $invoice->save();
+            
+            $order->setState(\Magento\Sales\Model\Order::STATE_PROCESSING);
+            $order->setStatus(\Magento\Sales\Model\Order::STATE_PROCESSING);
+
             $transactionSave = $this->transaction
                 ->addObject($invoice)
-                ->addObject($invoice->getOrder());
+                ->addObject($order);
             $transactionSave->save();
-
-            try {
-                $orderToUpdate = $invoice->getOrder();
-                $orderToUpdate->setState(\Magento\Sales\Model\Order::STATE_PROCESSING);
-                $orderToUpdate->setStatus(\Magento\Sales\Model\Order::STATE_PROCESSING);
-                $orderToUpdate->save();
-            } catch (\Exception $e) {
-                // ignore; order state update is best-effort
-            }
 
             $this->invoiceSender->send($invoice);
             $order->addCommentToStatusHistory(

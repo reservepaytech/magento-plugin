@@ -64,6 +64,15 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
                 throw new \Exception("Order ID is missing in request body.");
             }
 
+            $token = $this->request->getCookie('payment_redirect_token');
+            if (!$token) {
+                throw new \Exception("Access Denied: Invalid order ID");
+            }
+            $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+            if ($orderId != $decryptedId) {
+                throw new \Exception("Access Denied: Invalid order ID");
+            }
+
             $order = $this->orderRepository->get($orderId);
             if (!$order) {
                 throw new \Exception("Order not found for the given Order ID.");
