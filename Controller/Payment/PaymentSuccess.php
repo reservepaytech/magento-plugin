@@ -40,6 +40,8 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
     protected $messageManager;
     protected $quoteRepository;
 
+    protected $current_order_id;
+
     public function __construct(
         ScopeConfigInterface $scopeConfig,
         JsonFactory $jsonFactory,
@@ -72,6 +74,8 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         $this->checkoutSession = $checkoutSession;
         $this->messageManager = $messageManager;
         $this->quoteRepository = $quoteRepository;
+
+        $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
 
     public function execute()
@@ -92,13 +96,20 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
                 throw new \Exception("Order ID is missing in request body.");
             }
 
-            $token = $this->request->getCookie('payment_redirect_token');
-            if (!$token) {
-                throw new \Exception("Access Denied: Invalid order ID");
+            if ($this->current_order_id && !empty($this->current_order_id) && is_numeric($this->current_order_id)) {
+                if ($orderId != $this->current_order_id) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
             }
-            $decryptedId = $this->encryptor->decrypt(base64_decode($token));
-            if ($orderId != $decryptedId) {
-                throw new \Exception("Access Denied: Invalid order ID");
+            else {
+                $token = $this->request->getCookie('payment_redirect_token');
+                if (!$token) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
+                $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+                if ($orderId != $decryptedId) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
             }
 
             $order = $this->orderRepository->get($orderId);

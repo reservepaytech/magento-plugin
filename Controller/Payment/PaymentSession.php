@@ -14,6 +14,7 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Store\Model\ScopeInterface;
 use Magento\Framework\UrlInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
+use Magento\Checkout\Model\Session as CheckoutSession;
 
 class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterface
 {
@@ -25,6 +26,9 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
     protected $curl;
     protected $urlBuilder;
     protected $encryptor;
+    protected $checkoutSession;
+
+    protected $current_order_id;
 
     public function __construct(
         ScopeConfigInterface $scopeConfig,
@@ -34,7 +38,8 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
         JsonSerializer $jsonSerializer,
         Curl $curl,
         UrlInterface $urlBuilder,
-        EncryptorInterface $encryptor
+        EncryptorInterface $encryptor,
+        CheckoutSession $checkoutSession
     ) {
         $this->scopeConfig = $scopeConfig;
         $this->jsonFactory = $jsonFactory;
@@ -44,6 +49,9 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
         $this->curl = $curl;
         $this->urlBuilder = $urlBuilder;
         $this->encryptor = $encryptor;
+        $this->checkoutSession = $checkoutSession;
+
+        $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
 
     public function execute()
@@ -64,13 +72,20 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
                 throw new \Exception("Order ID is missing in request body.");
             }
 
-            $token = $this->request->getCookie('payment_redirect_token');
-            if (!$token) {
-                throw new \Exception("Access Denied: Invalid order ID");
+            if ($this->current_order_id && !empty($this->current_order_id) && is_numeric($this->current_order_id)) {
+                if ($orderId != $this->current_order_id) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
             }
-            $decryptedId = $this->encryptor->decrypt(base64_decode($token));
-            if ($orderId != $decryptedId) {
-                throw new \Exception("Access Denied: Invalid order ID");
+            else {
+                $token = $this->request->getCookie('payment_redirect_token');
+                if (!$token) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
+                $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+                if ($orderId != $decryptedId) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
             }
 
             $order = $this->orderRepository->get($orderId);

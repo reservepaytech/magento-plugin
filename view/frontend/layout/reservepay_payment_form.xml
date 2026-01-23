@@ -4,7 +4,7 @@
     <body>
         <referenceContainer name="content">
             <block class="Reservepay\Payment\Block\Form"
-                   template="Reservepay_Payment::form.phtml"/>
+                   template="Reservepay_Payment::form.phtml" />
         </referenceContainer>
     </body>
 </page>

@@ -15,14 +15,16 @@ use Magento\Framework\Encryption\EncryptorInterface;
 
 class Form extends Template
 {
-    protected $_orderRepository;
-    protected $_checkoutSession;
-    protected $_scopeConfig;
-    protected $_quoteRepository;
-    protected $_logger;
-    protected $_orderFactory;
-    protected $_request;
-    protected $_encryptor;
+    protected $orderRepository;
+    protected $checkoutSession;
+    protected $scopeConfig;
+    protected $quoteRepository;
+    protected $logger;
+    protected $orderFactory;
+    protected $request;
+    protected $encryptor;
+
+    protected $current_order_id;
 
     public function __construct(
         Template\Context $context, 
@@ -37,15 +39,17 @@ class Form extends Template
         array $data = []
     )
     {
-        $this->_orderRepository = $orderRepository;
-        $this->_checkoutSession = $checkoutSession;
-        $this->_scopeConfig = $scopeConfig;
-        $this->_quoteRepository = $quoteRepository;
-        $this->_logger = $logger;
-        $this->_orderFactory = $orderFactory;
-        $this->_request = $request;
-        $this->_encryptor = $encryptor;
+        $this->orderRepository = $orderRepository;
+        $this->checkoutSession = $checkoutSession;
+        $this->scopeConfig = $scopeConfig;
+        $this->quoteRepository = $quoteRepository;
+        $this->logger = $logger;
+        $this->orderFactory = $orderFactory;
+        $this->request = $request;
+        $this->encryptor = $encryptor;
         parent::__construct($context, $data);
+
+        $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
 
     public function getQuoteTotal()
@@ -61,14 +65,14 @@ class Form extends Template
     public function getPaymentConfig($key = null)
     {
         if ($key != null && !empty($key) && is_string($key)) {
-            $value = $this->_scopeConfig->getValue(
+            $value = $this->scopeConfig->getValue(
                 'payment/reservepay_payment/' . $key,
                 ScopeInterface::SCOPE_STORE
             );
 
             if ($key === 'apikey' && $value !== null) {
                 try {
-                    return $this->_encryptor->decrypt($value);
+                    return $this->encryptor->decrypt($value);
                 } catch (\Exception $e) {
                     return $value;
                 }
@@ -77,14 +81,14 @@ class Form extends Template
             return $value;
         }
 
-        $all = $this->_scopeConfig->getValue(
+        $all = $this->scopeConfig->getValue(
             'payment/reservepay_payment',
             ScopeInterface::SCOPE_STORE
         );
 
         if (is_array($all) && isset($all['apikey']) && $all['apikey'] !== null) {
             try {
-                $all['apikey'] = $this->_encryptor->decrypt($all['apikey']);
+                $all['apikey'] = $this->encryptor->decrypt($all['apikey']);
             } catch (\Exception $e) {
                 // leave original value on failure
             }
@@ -95,18 +99,31 @@ class Form extends Template
 
     public function getOrder()
     {   
-        $order = $this->_checkoutSession->getLastRealOrder();
+        $order = $this->checkoutSession->getLastRealOrder();
         if ($order && $order->getId()) {
             return $order;
         }
 
-        $token = $this->_request->getCookie('payment_redirect_token');
+        if ($this->current_order_id) {
+            try {
+                $order = $this->orderRepository->get($this->current_order_id);
+                if ($order && $order->getId()) {
+                    return $order;
+                }
+            } catch (\Exception $e) {
+                // continue to other methods
+            }
+        }
+
+        $token = $this->request->getCookie('payment_redirect_token');
         if ($token) {
             try {
-                $decryptedId = $this->_encryptor->decrypt(base64_decode($token));           
+                $decryptedId = $this->encryptor->decrypt(base64_decode($token));
                 if (is_numeric($decryptedId)) {
-                    $order = $this->_orderRepository->get($decryptedId);                
-                    return $order;
+                    $order = $this->orderRepository->get($decryptedId);
+                    if ($order && $order->getId()) {
+                        return $order;
+                    }
                 }
             } catch (\Exception $e) {
                 return null;

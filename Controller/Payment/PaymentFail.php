@@ -29,6 +29,8 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
     protected $quoteRepository;
     protected $encryptor;
 
+    protected $current_order_id;
+
     public function __construct(
         JsonFactory $jsonFactory,
         RequestInterface $request,
@@ -51,6 +53,8 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
         $this->messageManager = $messageManager;
         $this->quoteRepository = $quoteRepository;
         $this->encryptor = $encryptor;
+
+        $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
 
     public function execute()
@@ -71,13 +75,20 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
                 throw new \Exception("Order ID is missing in request body.");
             }
 
-            $token = $this->request->getCookie('payment_redirect_token');
-            if (!$token) {
-                throw new \Exception("Access Denied: Invalid order ID");
+            if ($this->current_order_id && !empty($this->current_order_id) && is_numeric($this->current_order_id)) {
+                if ($orderId != $this->current_order_id) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
             }
-            $decryptedId = $this->encryptor->decrypt(base64_decode($token));
-            if ($orderId != $decryptedId) {
-                throw new \Exception("Access Denied: Invalid order ID");
+            else {
+                $token = $this->request->getCookie('payment_redirect_token');
+                if (!$token) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
+                $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+                if ($orderId != $decryptedId) {
+                    throw new \Exception("Access Denied: Invalid order ID");
+                }
             }
 
             $order = $this->orderRepository->get($orderId);
