@@ -48,7 +48,6 @@ $init_payload = json_encode( array(
     'use strict';
 
     var data = <?php echo $init_payload; ?>;
-    console.log(data);
 
     if (typeof window.Reservepay === 'undefined') {
         console.error('Reservepay SDK not loaded.');

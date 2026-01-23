@@ -101,14 +101,14 @@ class Form extends Template
     {   
         $order = $this->checkoutSession->getLastRealOrder();
         if ($order && $order->getId()) {
-            return $order;
+            return $this->validateOrder($order);
         }
 
         if ($this->current_order_id) {
             try {
                 $order = $this->orderRepository->get($this->current_order_id);
                 if ($order && $order->getId()) {
-                    return $order;
+                    return $this->validateOrder($order);
                 }
             } catch (\Exception $e) {
                 // continue to other methods
@@ -122,13 +122,28 @@ class Form extends Template
                 if (is_numeric($decryptedId)) {
                     $order = $this->orderRepository->get($decryptedId);
                     if ($order && $order->getId()) {
-                        return $order;
+                        return $this->validateOrder($order);
                     }
                 }
             } catch (\Exception $e) {
                 return null;
             }
         }
+        return null;
+    }
+
+    private function validateOrder($order)
+    {
+        $allowedStates = [
+            \Magento\Sales\Model\Order::STATE_NEW,
+            \Magento\Sales\Model\Order::STATE_PENDING_PAYMENT
+        ];
+
+        if (in_array($order->getState(), $allowedStates)) {
+            return $order;
+        }
+
+        $this->logger->warning('Reservepay Form: Attempted access to invalid order state.', ['id' => $order->getId(), 'state' => $order->getState()]);
         return null;
     }
 }
