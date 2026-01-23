@@ -27,6 +27,8 @@ use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
 
 class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterface
 {
+    const API_URL_FINDPAYMENT = 'https://api.reservepay.com/merchants/find-payment';
+
     protected $scopeConfig;
     protected $jsonFactory;
     protected $request;
@@ -147,7 +149,6 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
                 $api_key = $encrypted;
             }
 
-            $url = 'https://api.reservepay.com/merchants/find-payment';
             $payload = [
                 'payment_id' => $paymentId,
             ];
@@ -159,7 +160,7 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
             $params = $this->jsonSerializer->serialize($payload);
             $this->curl->addHeader("Content-Length", strlen($params));
 
-            $this->curl->post($url, $params);
+            $this->curl->post(self::API_URL_FINDPAYMENT, $params);
 
             $status_code = $this->curl->getStatus();
             $body = $this->curl->getBody();
@@ -170,6 +171,10 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
                 throw new \Exception("Reservepay API returned an empty response.");
             }
             $resp = $this->jsonSerializer->unserialize($body);
+            if (!is_array($resp)) {
+                throw new \Exception("Invalid response format from Reservepay API.");
+            }
+
             $status = $resp['status'] ?? 'UNKNOWN';
             $responseContent = $status;
 

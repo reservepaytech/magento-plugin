@@ -18,6 +18,8 @@ use Magento\Checkout\Model\Session as CheckoutSession;
 
 class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterface
 {
+    const API_URL_STARTPAYMENT = 'https://api.reservepay.com/merchants/initiate-payment-flow';
+
     protected $scopeConfig;
     protected $jsonFactory;
     protected $request;
@@ -105,7 +107,6 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
                 $api_key = $encrypted;
             }
 
-            $url = 'https://api.reservepay.com/merchants/initiate-payment-flow';
             $payload = [
                 'payment_session_id' => $sessionId,
                 'capture' => true,
@@ -121,7 +122,7 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
             $params = $this->jsonSerializer->serialize($payload);
             $this->curl->addHeader("Content-Length", strlen($params));
 
-            $this->curl->post($url, $params);
+            $this->curl->post(self::API_URL_STARTPAYMENT, $params);
 
             $status_code = $this->curl->getStatus();
             $body = $this->curl->getBody();
