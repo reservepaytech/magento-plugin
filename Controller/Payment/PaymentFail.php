@@ -15,6 +15,8 @@ use Psr\Log\LoggerInterface;
 use Magento\Framework\Message\ManagerInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
+use Magento\Framework\Stdlib\CookieManagerInterface;
+use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
 
 class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
 {
@@ -28,6 +30,8 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
     protected $messageManager;
     protected $quoteRepository;
     protected $encryptor;
+    protected $cookieManager;
+    protected $cookieMetadataFactory;
 
     protected $current_order_id;
 
@@ -41,7 +45,9 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
         LoggerInterface $logger,
         ManagerInterface $messageManager,
         CartRepositoryInterface $quoteRepository,
-        EncryptorInterface $encryptor
+        EncryptorInterface $encryptor,
+        CookieManagerInterface $cookieManager,
+        CookieMetadataFactory $cookieMetadataFactory
     ) {
         $this->jsonFactory = $jsonFactory;
         $this->request = $request;
@@ -53,6 +59,8 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
         $this->messageManager = $messageManager;
         $this->quoteRepository = $quoteRepository;
         $this->encryptor = $encryptor;
+        $this->cookieManager = $cookieManager;
+        $this->cookieMetadataFactory = $cookieMetadataFactory;
 
         $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
@@ -118,12 +126,15 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
                     $this->quoteRepository->save($quote);
                     $this->checkoutSession->replaceQuote($quote);
                 } catch (\Exception $e) {
-                    error_log("Failed to restore quote: " . $e->getMessage() . "\n");
+                    $this->logger->error("Failed to restore quote: " . $e->getMessage());
                 }
             }
 
             $this->messageManager->addErrorMessage(__('Payment failed or was cancelled. Your order has been cancelled. Please try again or use a different payment method.'));
             $responseContent = ['status' => 'cancelled', 'message' => 'Order has been cancelled due to payment failure.'];
+
+            $metadata = $this->cookieMetadataFactory->createPublicCookieMetadata()->setPath('/');
+            $this->cookieManager->deleteCookie('payment_redirect_token', $metadata);
 
         } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
             $responseContent = ['status' => 'fail', 'message' => 'Order not found.'];

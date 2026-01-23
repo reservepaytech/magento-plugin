@@ -21,6 +21,9 @@ use Magento\Sales\Api\OrderManagementInterface;
 use Magento\Checkout\Model\Session as CheckoutSession;
 use Magento\Framework\Message\ManagerInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
+use Psr\Log\LoggerInterface;
+use Magento\Framework\Stdlib\CookieManagerInterface;
+use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
 
 class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterface
 {
@@ -39,6 +42,9 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
     protected $checkoutSession;
     protected $messageManager;
     protected $quoteRepository;
+    protected $logger;
+    protected $cookieManager;
+    protected $cookieMetadataFactory;
 
     protected $current_order_id;
 
@@ -57,7 +63,10 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         OrderManagementInterface $orderManagement,
         CheckoutSession $checkoutSession,
         ManagerInterface $messageManager,
-        CartRepositoryInterface $quoteRepository
+        CartRepositoryInterface $quoteRepository,
+        LoggerInterface $logger,
+        CookieManagerInterface $cookieManager,
+        CookieMetadataFactory $cookieMetadataFactory
     ) {
         $this->scopeConfig = $scopeConfig;
         $this->jsonFactory = $jsonFactory;
@@ -74,6 +83,9 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         $this->checkoutSession = $checkoutSession;
         $this->messageManager = $messageManager;
         $this->quoteRepository = $quoteRepository;
+        $this->logger = $logger;
+        $this->cookieManager = $cookieManager;
+        $this->cookieMetadataFactory = $cookieMetadataFactory;
 
         $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
@@ -177,13 +189,16 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
                             $this->quoteRepository->save($quote);
                             $this->checkoutSession->replaceQuote($quote);
                         } catch (\Exception $e) {
-                            error_log("Failed to restore quote: " . $e->getMessage() . "\n");
+                            $this->logger->error("Failed to restore quote: " . $e->getMessage());
                         }
                     }
                 }
                 $this->messageManager->addErrorMessage(__('Payment failure was detected. Your order has been cancelled. Please try again or use a different payment method.'));
                 $responseContent = ['status' => 'cancelled', 'message' => 'Order has been cancelled due to payment failure.'];
             }
+
+            $metadata = $this->cookieMetadataFactory->createPublicCookieMetadata()->setPath('/');
+            $this->cookieManager->deleteCookie('payment_redirect_token', $metadata);
 
         } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
             $responseContent = ['status' => 'fail', 'message' => 'Order not found.'];

@@ -38,7 +38,7 @@ class SetOrderTokenCookie
         $token = base64_encode($encryptedId);
         $metadata = $this->cookieMetadataFactory
             ->createPublicCookieMetadata()
-            ->setDuration(300) // 5 minutes
+            ->setDuration(600) // 10 minutes
             ->setPath('/')
             ->setHttpOnly(true); // Accessible only by PHP, not JS
         $this->cookieManager->setPublicCookie(self::COOKIE_NAME, $token, $metadata);
