@@ -1,10 +1,8 @@
 <?php
 
-$setting = $block->getPaymentConfig();
-$merchantid     = $setting['merchantid'] ?? '';
-$installationid = $setting['installationid'] ?? '';
-$apikey         = $block->getPaymentConfig('apikey') ?? '';
-if ($merchantid === '' || $installationid === '' || $apikey === '') {
+$merchantid     = $block->getPaymentConfig('merchantid') ?? '';
+$installationid = $block->getPaymentConfig('installationid') ?? '';
+if (!$block->isPaymentConfigured()) {
     die( 'Reservepay Payment gateway is not configured properly. All of merchant id, installation id, and api key must be set with the correct value.' );
 }
 

@@ -65,18 +65,13 @@ class Form extends Template
     public function getPaymentConfig($key = null)
     {
         if ($key != null && !empty($key) && is_string($key)) {
+            if ($key == 'apikey') {
+                throw new \Exception('Access to API key is restricted.');
+            }
             $value = $this->scopeConfig->getValue(
                 'payment/reservepay_payment/' . $key,
                 ScopeInterface::SCOPE_STORE
             );
-
-            if ($key === 'apikey' && $value !== null) {
-                try {
-                    return $this->encryptor->decrypt($value);
-                } catch (\Exception $e) {
-                    return $value;
-                }
-            }
 
             return $value;
         }
@@ -85,13 +80,8 @@ class Form extends Template
             'payment/reservepay_payment',
             ScopeInterface::SCOPE_STORE
         );
-
-        if (is_array($all) && isset($all['apikey']) && $all['apikey'] !== null) {
-            try {
-                $all['apikey'] = $this->encryptor->decrypt($all['apikey']);
-            } catch (\Exception $e) {
-                // leave original value on failure
-            }
+        if (is_array($all) && isset($all['apikey'])) {
+            unset($all['apikey']);
         }
 
         return $all;
@@ -145,5 +135,25 @@ class Form extends Template
 
         $this->logger->warning('Reservepay Form: Attempted access to invalid order state.', ['id' => $order->getId(), 'state' => $order->getState()]);
         return null;
+    }
+
+    public function isPaymentConfigured(): bool
+    {
+        $merchantId = $this->scopeConfig->getValue(
+            'payment/reservepay_payment/merchantid',
+            \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+        );
+
+        $installationId = $this->scopeConfig->getValue(
+            'payment/reservepay_payment/installationid',
+            \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+        );
+
+        $apiKey = $this->scopeConfig->getValue(
+            'payment/reservepay_payment/apikey',
+            \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+        );
+
+        return !empty($merchantId) && !empty($installationId) && !empty($apiKey);
     }
 }
