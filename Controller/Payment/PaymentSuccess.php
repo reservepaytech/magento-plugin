@@ -137,6 +137,17 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
                 throw new \Exception("Payment ID not found in order payment additional information.");
             }
 
+            // Check if this payment_id has already been processed
+            $processedPaymentId = $payment->getAdditionalInformation('reservepay_processed_payment_id');
+            if ($processedPaymentId === $paymentId) {
+                // Payment already processed, return success without invoicing again
+                $this->logger->info("Payment already processed", [
+                    'payment_id' => $paymentId,
+                    'order_id' => $orderId
+                ]);
+                return $result->setData("SUCCESSFUL");
+            }
+
             $amount = $order->getGrandTotal();
             $currency = $order->getOrderCurrencyCode();
             $encrypted = $this->scopeConfig->getValue(
@@ -180,6 +191,10 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
 
             if (strtolower($status) === 'successful') {
                 $this->invoiceOrder($order);
+
+                // Mark this payment_id as processed to avoid duplicate invoicing
+                $payment->setAdditionalInformation('reservepay_processed_payment_id', $paymentId);
+                $this->orderRepository->save($order);
             }
             else {
                 if ($order->canCancel()) {
