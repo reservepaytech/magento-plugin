@@ -38,9 +38,11 @@ class SetOrderTokenCookie
         $token = base64_encode($encryptedId);
         $metadata = $this->cookieMetadataFactory
             ->createPublicCookieMetadata()
-            ->setDuration(600) // 10 minutes
+            ->setDuration(600)  // 10 minutes
             ->setPath('/')
-            ->setHttpOnly(true); // Accessible only by PHP, not JS
+            ->setHttpOnly(true) // Accessible only by PHP, not JS
+            ->setSecure(true)   // Only send over HTTPS
+            ->setSameSite('Strict');    // Prevent CSRF via cookie
         $this->cookieManager->setPublicCookie(self::COOKIE_NAME, $token, $metadata);
     }
 }
