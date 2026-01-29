@@ -75,7 +75,7 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
             }
 
             if ($this->current_order_id && !empty($this->current_order_id) && is_numeric($this->current_order_id)) {
-                if ($orderId != $this->current_order_id) {
+                if ((string)$orderId !== (string)$this->current_order_id) {
                     throw new \Exception("Access Denied: Invalid order ID");
                 }
             }
@@ -85,7 +85,7 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
                     throw new \Exception("Access Denied: Invalid order ID");
                 }
                 $decryptedId = $this->encryptor->decrypt(base64_decode($token));
-                if ($orderId != $decryptedId) {
+                if ((string)$orderId !== (string)$decryptedId) {
                     throw new \Exception("Access Denied: Invalid order ID");
                 }
             }
