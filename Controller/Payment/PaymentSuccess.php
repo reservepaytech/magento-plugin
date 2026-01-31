@@ -24,6 +24,7 @@ use Magento\Quote\Api\CartRepositoryInterface;
 use Psr\Log\LoggerInterface;
 use Magento\Framework\Stdlib\CookieManagerInterface;
 use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
+use Magento\Framework\Api\SearchCriteriaBuilder;
 
 class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterface
 {
@@ -47,6 +48,7 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
     protected $logger;
     protected $cookieManager;
     protected $cookieMetadataFactory;
+    protected $searchCriteriaBuilder;
 
     protected $current_order_id;
 
@@ -68,7 +70,8 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         CartRepositoryInterface $quoteRepository,
         LoggerInterface $logger,
         CookieManagerInterface $cookieManager,
-        CookieMetadataFactory $cookieMetadataFactory
+        CookieMetadataFactory $cookieMetadataFactory,
+        SearchCriteriaBuilder $searchCriteriaBuilder
     ) {
         $this->scopeConfig = $scopeConfig;
         $this->jsonFactory = $jsonFactory;
@@ -88,6 +91,7 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         $this->logger = $logger;
         $this->cookieManager = $cookieManager;
         $this->cookieMetadataFactory = $cookieMetadataFactory;
+        $this->searchCriteriaBuilder = $searchCriteriaBuilder;
 
         $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
@@ -101,13 +105,20 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
             
             $params = $this->jsonSerializer->unserialize($content);
             $sessionId = isset($params['payment_session_id']) ? $params['payment_session_id'] : null;
-            $orderId = isset($params['order_id']) ? $params['order_id'] : null;
+            $incrementId = isset($params['order_id']) ? $params['order_id'] : null;
+
+            $searchCriteria = $this->searchCriteriaBuilder
+                ->addFilter('increment_id', $incrementId, 'eq')
+                ->create();
+            $orders = $this->orderRepository->getList($searchCriteria)->getItems();
+            if (empty($orders)) {
+                throw new \Exception("Order not found for the given Increment ID.");
+            }
+            $order = reset($orders);
+            $orderId = $order->getId();
 
             if (!$sessionId) {
                 throw new \Exception("Session ID is missing in request body.");
-            }
-            if (!$orderId) {
-                throw new \Exception("Order ID is missing in request body.");
             }
 
             if ($this->current_order_id && !empty($this->current_order_id) && is_numeric($this->current_order_id)) {
@@ -124,11 +135,6 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
                 if ((string)$orderId !== (string)$decryptedId) {
                     throw new \Exception("Access Denied: Invalid order ID");
                 }
-            }
-
-            $order = $this->orderRepository->get($orderId);
-            if (!$order || !$order->getId()) {
-                throw new \Exception("Order not found for the given Order ID.");
             }
 
             $allowedStates = [

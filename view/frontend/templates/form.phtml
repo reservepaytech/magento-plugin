@@ -33,7 +33,7 @@ $init_payload = json_encode( array(
     'paymentsessionUrl'  => $paymentsession_url,
     'paymentsuccessUrl'  => $paymentsuccess_url,
     'paymentfailUrl'     => $paymentfail_url,
-    'orderId'            => $order->getId(),
+    'orderId'            => $order->getIncrementId(),   // Public ID: "000000123"
     'checkoutUrl'       => $checkout_url,
     'orderreceivedUrl' => $orderreceived_url,
 ) );
