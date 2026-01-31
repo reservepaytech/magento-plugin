@@ -127,8 +127,22 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
             }
 
             $order = $this->orderRepository->get($orderId);
-            if (!$order) {
+            if (!$order || !$order->getId()) {
                 throw new \Exception("Order not found for the given Order ID.");
+            }
+
+            $allowedStates = [
+                \Magento\Sales\Model\Order::STATE_NEW,
+                \Magento\Sales\Model\Order::STATE_PENDING_PAYMENT
+            ];
+            $currentState = $order->getState();
+            if (!in_array($currentState, $allowedStates, true)) {
+                $this->logger->warning('Payment attempted on invalid order state', [
+                    'order_id' => $orderId,
+                    'current_state' => $currentState,
+                    'allowed_states' => $allowedStates
+                ]);
+                throw new \Exception("Order is not in a valid state for payment processing.");
             }
 
             $payment = $order->getPayment();
