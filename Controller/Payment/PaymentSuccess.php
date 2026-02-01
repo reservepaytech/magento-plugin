@@ -177,7 +177,8 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
             try {
                 $api_key = $this->encryptor->decrypt($encrypted);
             } catch (\Exception $e) {
-                $api_key = $encrypted;
+                $this->logger->critical('Reservepay: Failed to decrypt API key.');
+                throw new \Exception("Configuration error.");
             }
 
             $payload = [
@@ -243,6 +244,8 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
             $responseContent = ['status' => 'fail', 'message' => 'Order not found.'];
         } catch (\Exception $e) {
+            $this->logger->critical('Critical error detected during payment confirmation: ' . $e->getMessage());
+            $this->messageManager->addErrorMessage(__('Critical error during payment confirmation.'));
             $responseContent = ['status' => 'error', 'message' => $e->getMessage()];
         }
 
