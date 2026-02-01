@@ -107,7 +107,7 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
             ];
             $currentState = $order->getState();
             if (!in_array($currentState, $allowedStates, true)) {
-                $this->logger->warning('Payment attempted on invalid order state', [
+                $this->logger->warning("Payment attempted on invalid order state", [
                     'order_id' => $orderId,
                     'current_state' => $currentState,
                     'allowed_states' => $allowedStates
@@ -130,9 +130,9 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
             $payload = [
                 'payment_session_id' => $sessionId,
                 'capture' => true,
-                'amount' => (int) round( $amount * 100 ),
+                'amount' => (int) round($amount * 100),
                 'currency' => $currency,
-                'return_url' => $this->urlBuilder->getUrl( '/checkout/order-received/' . $orderId),
+                'return_url' => $this->urlBuilder->getUrl('/checkout/onepage/success')  // actually not used
             ];
             $this->curl->addHeader("User-Agent", "Magento2-ReservepayModule/1.0");
             $this->curl->addHeader("Content-Type", "application/json");
