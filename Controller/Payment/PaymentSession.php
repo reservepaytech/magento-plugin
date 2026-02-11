@@ -120,7 +120,8 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
             try {
                 $api_key = $this->encryptor->decrypt($encrypted);
             } catch (\Exception $e) {
-                $api_key = $encrypted;
+                $this->logger->critical('Reservepay: Failed to decrypt API key.');
+                throw new \Exception("Payment gateway configuration error.");
             }
 
             $payload = [
