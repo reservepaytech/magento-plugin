@@ -56,8 +56,6 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
         $this->encryptor = $encryptor;
         $this->checkoutSession = $checkoutSession;
         $this->searchCriteriaBuilder = $searchCriteriaBuilder;
-
-        $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
 
     public function execute()
@@ -85,20 +83,18 @@ class PaymentSession implements HttpPostActionInterface, CsrfAwareActionInterfac
                 throw new \Exception("Session ID is missing in request body.");
             }
 
-            if ($this->current_order_id && !empty($this->current_order_id) && is_numeric($this->current_order_id)) {
-                if ((string)$orderId !== (string)$this->current_order_id) {
-                    throw new \Exception("Access Denied: Invalid order ID");
-                }
+            $token = $this->request->getCookie('payment_redirect_token');
+            if (!$token) {
+                throw new \Exception("Access Denied: Missing payment token");
             }
-            else {
-                $token = $this->request->getCookie('payment_redirect_token');
-                if (!$token) {
-                    throw new \Exception("Access Denied: Invalid order ID");
-                }
+            try {
                 $decryptedId = $this->encryptor->decrypt(base64_decode($token));
-                if ((string)$orderId !== (string)$decryptedId) {
-                    throw new \Exception("Access Denied: Invalid order ID");
-                }
+            }
+            catch (\Exception $e) {
+                throw new \Exception("Access Denied: Invalid payment token");
+            }
+            if ((string)$orderId !== (string)$decryptedId) {
+                throw new \Exception("Access Denied: Invalid order ID");
             }
 
             $allowedStates = [
