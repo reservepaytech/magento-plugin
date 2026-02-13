@@ -17,7 +17,7 @@ use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Checkout\Model\Session as CheckoutSession;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 
-class PaymentSession implements HttpPostActionInterface //, CsrfAwareActionInterface
+class PaymentSession implements HttpPostActionInterface
 {
     const API_URL_STARTPAYMENT = 'https://api.reservepay.com/merchants/initiate-payment-flow';
 
