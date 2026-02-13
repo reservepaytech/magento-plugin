@@ -12,6 +12,7 @@ use Psr\Log\LoggerInterface;
 use Magento\Sales\Model\OrderFactory;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
+use Magento\Framework\Data\Form\FormKey;
 
 class Form extends Template
 {
@@ -23,6 +24,7 @@ class Form extends Template
     protected $orderFactory;
     protected $request;
     protected $encryptor;
+    protected $formKey;
 
     protected $current_order_id;
 
@@ -36,6 +38,7 @@ class Form extends Template
         OrderFactory $orderFactory,
         RequestInterface $request,
         EncryptorInterface $encryptor,
+        FormKey $formKey,
         array $data = []
     )
     {
@@ -47,6 +50,7 @@ class Form extends Template
         $this->orderFactory = $orderFactory;
         $this->request = $request;
         $this->encryptor = $encryptor;
+        $this->formKey = $formKey;
         parent::__construct($context, $data);
 
         $this->current_order_id = $this->checkoutSession->getLastOrderId();
@@ -155,5 +159,10 @@ class Form extends Template
         );
 
         return !empty($merchantId) && !empty($installationId) && !empty($apiKey);
+    }
+
+    public function getFormKey(): string
+    {
+        return $this->formKey->getFormKey();
     }
 }

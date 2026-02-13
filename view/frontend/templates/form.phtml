@@ -24,6 +24,7 @@ $paymentsuccess_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/pay
 $paymentfail_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentfail' ) );
 $checkout_url = $block->escapeUrl( $block->getUrl( 'checkout/cart' ) );
 $orderreceived_url = $block->escapeUrl( $block->getUrl( 'checkout/onepage/success') );
+$formKey = $block->getFormKey();
 
 $init_payload = json_encode( array(
     'merchantId'         => $merchantid,
@@ -36,9 +37,9 @@ $init_payload = json_encode( array(
     'orderId'            => $order->getIncrementId(),   // Public ID: "000000123"
     'checkoutUrl'       => $checkout_url,
     'orderreceivedUrl' => $orderreceived_url,
+    'formKey'           => $formKey,
 ) );
 ?>
-
 <script src="https://sdk.reservepay.com/js/v1/reservepay.js"></script>
 <div id="reservepay-payment-form"></div>
 <script>
@@ -64,12 +65,15 @@ $init_payload = json_encode( array(
                     await fetch(data.paymentsessionUrl, {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                         },
                         body: JSON.stringify({
                             payment_session_id: sessionId,
                             order_id: data.orderId,
-                        })
+                            form_key: data.formKey,
+                        }),
+                        credentials: 'same-origin',
                     });
                     return;
                 } catch (e) {
@@ -82,12 +86,15 @@ $init_payload = json_encode( array(
                     var response = await fetch(data.paymentsuccessUrl, {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                         },
                         body: JSON.stringify({
                             payment_session_id: sessionId,
                             order_id: data.orderId,
-                        })
+                            form_key: data.formKey,
+                        }),
+                        credentials: 'same-origin',
                     });
                     if (response.ok) {
                         var status = await response.json();
@@ -106,12 +113,15 @@ $init_payload = json_encode( array(
                     var response = await fetch(data.paymentfailUrl, {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',                            
                         },
                         body: JSON.stringify({
                             payment_session_id: sessionId,
                             order_id: data.orderId,
-                        })
+                            form_key: data.formKey,
+                        }),
+                        credentials: 'same-origin',
                     });
                 } catch (e) {
                     console.error('Error handling payment failure', e);

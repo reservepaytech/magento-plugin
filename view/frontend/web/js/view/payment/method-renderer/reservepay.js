@@ -17,6 +17,7 @@ define(
 
             afterPlaceOrder: function () {
                 $.mage.redirect(url.build(this.redirectUrl));
+                return false;
             }
         });
     }

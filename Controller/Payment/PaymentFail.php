@@ -19,7 +19,7 @@ use Magento\Framework\Stdlib\CookieManagerInterface;
 use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 
-class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
+class PaymentFail implements HttpPostActionInterface
 {
     protected $jsonFactory;
     protected $request;
@@ -165,15 +165,5 @@ class PaymentFail implements HttpPostActionInterface, CsrfAwareActionInterface
         }
 
         return $result->setData($responseContent);
-    }
-
-    public function createCsrfValidationException(RequestInterface $request): ?InvalidRequestException
-    {
-        return null;
-    }
-
-    public function validateForCsrf(RequestInterface $request): ?bool
-    {
-        return true;
     }
 }

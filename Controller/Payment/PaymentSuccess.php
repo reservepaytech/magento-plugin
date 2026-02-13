@@ -26,7 +26,7 @@ use Magento\Framework\Stdlib\CookieManagerInterface;
 use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 
-class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterface
+class PaymentSuccess implements HttpPostActionInterface
 {
     const API_URL_FINDPAYMENT = 'https://api.reservepay.com/merchants/find-payment';
 
@@ -178,7 +178,7 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
                 $api_key = $this->encryptor->decrypt($encrypted);
             } catch (\Exception $e) {
                 $this->logger->critical('Reservepay: Failed to decrypt API key.');
-                throw new \Exception("Configuration error.");
+                throw new \Exception("Payment gateway configuration error.");
             }
 
             $payload = [
@@ -250,16 +250,6 @@ class PaymentSuccess implements HttpPostActionInterface, CsrfAwareActionInterfac
         }
 
         return $result->setData($responseContent);
-    }
-
-    public function createCsrfValidationException(RequestInterface $request): ?InvalidRequestException
-    {
-        return null;
-    }
-
-    public function validateForCsrf(RequestInterface $request): ?bool
-    {
-        return true;
     }
 
     public function invoiceOrder($order)
