@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block class="Reservepay\Payment\Block\Customer\Order\ResumePayment"
+                   name="reservepay.order.resume.payment"
+                   template="Reservepay_Payment::customer/order/resume_payment.phtml"
+                   before="-"
+                   cacheable="false" />
+        </referenceContainer>
+    </body>
+</page>

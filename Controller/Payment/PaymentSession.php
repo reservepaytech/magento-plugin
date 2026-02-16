@@ -3,8 +3,6 @@
 namespace Reservepay\Payment\Controller\Payment;
 
 use Magento\Framework\App\Action\HttpPostActionInterface;
-use Magento\Framework\App\CsrfAwareActionInterface;
-use Magento\Framework\App\Request\InvalidRequestException;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\App\RequestInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
@@ -14,8 +12,9 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Store\Model\ScopeInterface;
 use Magento\Framework\UrlInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
+use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Checkout\Model\Session as CheckoutSession;
-use Magento\Framework\Api\SearchCriteriaBuilder;
+use Psr\Log\LoggerInterface;
 
 class PaymentSession implements HttpPostActionInterface
 {
@@ -29,10 +28,9 @@ class PaymentSession implements HttpPostActionInterface
     protected $curl;
     protected $urlBuilder;
     protected $encryptor;
+    protected $customerSession;
     protected $checkoutSession;
-    protected $searchCriteriaBuilder;
-
-    protected $current_order_id;
+    protected $logger;
 
     public function __construct(
         ScopeConfigInterface $scopeConfig,
@@ -43,8 +41,9 @@ class PaymentSession implements HttpPostActionInterface
         Curl $curl,
         UrlInterface $urlBuilder,
         EncryptorInterface $encryptor,
+        CustomerSession $customerSession,
         CheckoutSession $checkoutSession,
-        SearchCriteriaBuilder $searchCriteriaBuilder
+        LoggerInterface $logger
     ) {
         $this->scopeConfig = $scopeConfig;
         $this->jsonFactory = $jsonFactory;
@@ -54,8 +53,9 @@ class PaymentSession implements HttpPostActionInterface
         $this->curl = $curl;
         $this->urlBuilder = $urlBuilder;
         $this->encryptor = $encryptor;
+        $this->customerSession = $customerSession;
         $this->checkoutSession = $checkoutSession;
-        $this->searchCriteriaBuilder = $searchCriteriaBuilder;
+        $this->logger = $logger;
     }
 
     public function execute()
@@ -64,37 +64,61 @@ class PaymentSession implements HttpPostActionInterface
 
         try {
             $content = $this->request->getContent();
-            
             $params = $this->jsonSerializer->unserialize($content);
             $sessionId = isset($params['payment_session_id']) ? $params['payment_session_id'] : null;
-            $incrementId = isset($params['order_id']) ? $params['order_id'] : null;
-
-            $searchCriteria = $this->searchCriteriaBuilder
-                ->addFilter('increment_id', $incrementId, 'eq')
-                ->create();
-            $orders = $this->orderRepository->getList($searchCriteria)->getItems();
-            if (empty($orders)) {
-                throw new \Exception("Order not found for the given Increment ID.");
-            }
-            $order = reset($orders);
-            $orderId = $order->getId();
+            $orderId = isset($params['order_id']) ? $params['order_id'] : null;
 
             if (!$sessionId) {
                 throw new \Exception("Session ID is missing in request body.");
             }
 
-            $token = $this->request->getCookie('payment_redirect_token');
-            if (!$token) {
-                throw new \Exception("Access Denied: Missing payment token");
+            if (!$orderId || !is_numeric($orderId)) {
+                throw new \Exception("Invalid order ID");
             }
-            try {
-                $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+
+            $order = $this->orderRepository->get($orderId);
+            if (!$order || !$order->getId()) {
+                throw new \Exception("Order not found.");
             }
-            catch (\Exception $e) {
-                throw new \Exception("Access Denied: Invalid payment token");
-            }
-            if ((string)$orderId !== (string)$decryptedId) {
-                throw new \Exception("Access Denied: Invalid order ID");
+
+            // Validate ownership
+            if ($this->customerSession->isLoggedIn()) {
+                // For logged-in customers: validate customer ID
+                $customerId = $this->customerSession->getCustomerId();
+                if ($order->getCustomerId() != $customerId) {
+                    $this->logger->warning('PaymentSession: Customer ID mismatch', [
+                        'session_customer_id' => $customerId,
+                        'order_customer_id' => $order->getCustomerId(),
+                        'order_id' => $orderId
+                    ]);
+                    throw new \Exception("Access Denied: Invalid order");
+                }
+            } else {
+                // For guest users: validate via session first, then cookie
+                $sessionOrderId = $this->checkoutSession->getLastOrderId();
+
+                if ($sessionOrderId && $sessionOrderId == $orderId) {
+                    // Valid - order from current checkout session
+                } else {
+                    // Not in current session, validate cookie
+                    $token = $this->request->getCookie('payment_redirect_token');
+                    if (!$token) {
+                        throw new \Exception("Access Denied: Missing payment token");
+                    }
+                    try {
+                        $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+                        if ($decryptedId != $orderId) {
+                            $this->logger->warning('PaymentSession: Order ID validation failed', [
+                                'session_order_id' => $sessionOrderId,
+                                'cookie_order_id' => $decryptedId,
+                                'requested_order_id' => $orderId
+                            ]);
+                            throw new \Exception("Access Denied: Invalid payment session");
+                        }
+                    } catch (\Exception $e) {
+                        throw new \Exception("Access Denied: Invalid payment token");
+                    }
+                }
             }
 
             $allowedStates = [

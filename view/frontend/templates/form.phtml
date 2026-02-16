@@ -1,134 +1,132 @@
 <?php
-
-$merchantid     = $block->getPaymentConfig('merchantid') ?? '';
-$installationid = $block->getPaymentConfig('installationid') ?? '';
-if (!$block->isPaymentConfigured()) {
-    die( 'Reservepay Payment gateway is not configured properly. All of merchant id, installation id, and api key must be set with the correct value.' );
-}
-
-$order = $block->getOrder();
-if ( ! $order || ! $order->getId() ) {
-    die( 'Order not found.' );
-}
-
-$amount = (float) $order->getGrandTotal();
-if (!$amount || $amount <= 0) {
-    die( 'Order not found.' );
-}
-
-// compute amount in minor unit (integer)
-$amount_minor = (int) round( (float) $amount * 100 );
-
-$paymentsession_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentsession' ) );
-$paymentsuccess_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentsuccess' ) );
-$paymentfail_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentfail' ) );
-$checkout_url = $block->escapeUrl( $block->getUrl( 'checkout/cart' ) );
-$orderreceived_url = $block->escapeUrl( $block->getUrl( 'checkout/onepage/success') );
-$formKey = $block->getFormKey();
-
-$init_payload = json_encode( array(
-    'merchantId'         => $merchantid,
-    'installationId'     => $installationid,
-    'containerSelector'  => '#reservepay-payment-form',
-    'amount'             => $amount_minor,
-    'paymentsessionUrl'  => $paymentsession_url,
-    'paymentsuccessUrl'  => $paymentsuccess_url,
-    'paymentfailUrl'     => $paymentfail_url,
-    'orderId'            => $order->getIncrementId(),   // Public ID: "000000123"
-    'checkoutUrl'       => $checkout_url,
-    'orderreceivedUrl' => $orderreceived_url,
-    'formKey'           => $formKey,
-) );
+$orderdata_url = $block->escapeUrl($block->getUrl('reservepay/payment/orderdata'));
+$paymentsession_url = $block->escapeUrl($block->getUrl('reservepay/payment/paymentsession'));
+$paymentsuccess_url = $block->escapeUrl($block->getUrl('reservepay/payment/paymentsuccess'));
+$paymentfail_url = $block->escapeUrl($block->getUrl('reservepay/payment/paymentfail'));
+$checkout_url = $block->escapeUrl($block->getUrl('checkout/cart'));
+$orderreceived_url = $block->escapeUrl($block->getUrl('checkout/onepage/success'));
+$orderId = (int) $block->getRequest()->getParam('order_id');
 ?>
 <script src="https://sdk.reservepay.com/js/v1/reservepay.js"></script>
 <div id="reservepay-payment-form"></div>
+<div id="reservepay-loading">Loading payment form...</div>
 <script>
-(function() {
+  (function () {
     'use strict';
 
-    var data = <?php echo $init_payload; ?>;
+    var orderId = <?php echo json_encode($orderId); ?>;
 
-    if (typeof window.Reservepay === 'undefined') {
-        console.error('Reservepay SDK not loaded.');
-        return;
+    if (!orderId) {
+      document.getElementById('reservepay-loading').textContent = 'Invalid payment session.';
+      return;
     }
 
-    window.Reservepay.initReservepayFormUI({
-        formType: 'embedded',
-        merchantId: String(data.merchantId),
-        installationId: String(data.installationId),
-        formOptions: {
-            containerSelector: data.containerSelector,
+    fetch(<?php echo json_encode($orderdata_url); ?>, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({
+        order_id: orderId
+      }),
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error('Failed to load order data');
+        return response.json();
+      })
+      .then(function (data) {
+        document.getElementById('reservepay-loading').style.display = 'none';
+
+        if (data.error) {
+          document.getElementById('reservepay-payment-form').textContent = data.error;
+          return;
+        }
+
+        if (typeof window.Reservepay === 'undefined') {
+          console.error('Reservepay SDK not loaded.');
+          return;
+        }
+
+        window.Reservepay.initReservepayFormUI({
+          formType: 'embedded',
+          merchantId: String(data.merchant_id),
+          installationId: String(data.installation_id),
+          formOptions: {
+            containerSelector: '#reservepay-payment-form',
             amount: String(data.amount),
             async onPaymentSessionReady(sessionId) {
-                try {
-                    await fetch(data.paymentsessionUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        body: JSON.stringify({
-                            payment_session_id: sessionId,
-                            order_id: data.orderId,
-                            form_key: data.formKey,
-                        }),
-                        credentials: 'same-origin',
-                    });
-                    return;
-                } catch (e) {
-                    console.error('Error sending payment session to server', e);
-                }
-                window.location.href = data.checkoutUrl;
+              try {
+                await fetch(<?php echo json_encode($paymentsession_url); ?>, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                  },
+                  body: JSON.stringify({
+                    payment_session_id: sessionId,
+                    order_id: orderId,
+                  }),
+                  credentials: 'same-origin',
+                });
+                return;
+              } catch (e) {
+                console.error('Error sending payment session to server', e);
+              }
+              window.location.href = <?php echo json_encode($checkout_url); ?>;
             },
             async onPaymentSuccess(sessionId) {
-                try {
-                    var response = await fetch(data.paymentsuccessUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        body: JSON.stringify({
-                            payment_session_id: sessionId,
-                            order_id: data.orderId,
-                            form_key: data.formKey,
-                        }),
-                        credentials: 'same-origin',
-                    });
-                    if (response.ok) {
-                        var status = await response.json();
-                        if (status === 'SUCCESSFUL') {
-                            window.location.href = data.orderreceivedUrl;
-                            return;
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error verifying payment success', e);
+              try {
+                var response = await fetch(<?php echo json_encode($paymentsuccess_url); ?>, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                  },
+                  body: JSON.stringify({
+                    payment_session_id: sessionId,
+                    order_id: orderId
+                  }),
+                  credentials: 'same-origin',
+                });
+                if (response.ok) {
+                  var status = await response.json();
+                  if (status === 'SUCCESSFUL') {
+                    window.location.href = <?php echo json_encode($orderreceived_url); ?>;
+                    return;
+                  }
                 }
-                window.location.href = data.checkoutUrl;
+              } catch (e) {
+                console.error('Error verifying payment success', e);
+              }
+              window.location.href = <?php echo json_encode($checkout_url); ?>;
             },
             async onPaymentFailed(sessionId) {
-                try {
-                    var response = await fetch(data.paymentfailUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',                            
-                        },
-                        body: JSON.stringify({
-                            payment_session_id: sessionId,
-                            order_id: data.orderId,
-                            form_key: data.formKey,
-                        }),
-                        credentials: 'same-origin',
-                    });
-                } catch (e) {
-                    console.error('Error handling payment failure', e);
-                }
-                window.location.href = data.checkoutUrl;
+              try {
+                await fetch(<?php echo json_encode($paymentfail_url); ?>, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                  },
+                  body: JSON.stringify({
+                    payment_session_id: sessionId,
+                    order_id: orderId
+                  }),
+                  credentials: 'same-origin',
+                });
+              } catch (e) {
+                console.error('Error handling payment failure', e);
+              }
+              window.location.href = <?php echo json_encode($checkout_url); ?>;
             }
-        }
-    });
-})();
+          }
+        });
+      })
+      .catch(function (err) {
+        console.error('Failed to load payment data', err);
+        document.getElementById('reservepay-loading').textContent = 'Unable to load payment form. Please return to checkout.';
+      });
+  })();
 </script>

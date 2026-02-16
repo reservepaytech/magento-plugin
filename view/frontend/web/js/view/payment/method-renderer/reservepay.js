@@ -2,10 +2,9 @@ define(
     [
         'jquery',
         'Magento_Checkout/js/view/payment/default',
-        'mage/url',
-        'Magento_Checkout/js/action/place-order'
+        'mage/url'
     ],
-    function ($, Component, url, placeOrderAction) {
+    function ($, Component, url) {
         'use strict';
 
         return Component.extend({
@@ -15,8 +14,31 @@ define(
                 redirectUrl: 'reservepay/payment/form'
             },
 
-            afterPlaceOrder: function () {
-                $.mage.redirect(url.build(this.redirectUrl));
+            placeOrder: function (data, event) {
+                var self = this;
+
+                if (event) {
+                    event.preventDefault();
+                }
+
+                if (this.validate() &&
+                    this.isPlaceOrderActionAllowed()
+                ) {
+                    this.isPlaceOrderActionAllowed(false);
+
+                    this.getPlaceOrderDeferredObject()
+                        .done(function (orderId) {
+                            $.mage.redirect(
+                                url.build(self.redirectUrl + '/order_id/' + orderId)
+                            );
+                        })
+                        .always(function () {
+                            self.isPlaceOrderActionAllowed(true);
+                        });
+
+                    return true;
+                }
+
                 return false;
             }
         });

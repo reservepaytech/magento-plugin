@@ -24,7 +24,6 @@ class Form extends Template
     protected $orderFactory;
     protected $request;
     protected $encryptor;
-    protected $formKey;
 
     protected $current_order_id;
 
@@ -159,10 +158,5 @@ class Form extends Template
         );
 
         return !empty($merchantId) && !empty($installationId) && !empty($apiKey);
-    }
-
-    public function getFormKey(): string
-    {
-        return $this->formKey->getFormKey();
     }
 }

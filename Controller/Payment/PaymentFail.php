@@ -3,21 +3,19 @@
 namespace Reservepay\Payment\Controller\Payment;
 
 use Magento\Framework\App\Action\HttpPostActionInterface;
-use Magento\Framework\App\CsrfAwareActionInterface;
-use Magento\Framework\App\Request\InvalidRequestException;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\App\RequestInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Framework\Serialize\Serializer\Json as JsonSerializer;
 use Magento\Sales\Api\OrderManagementInterface;
 use Magento\Checkout\Model\Session as CheckoutSession;
+use Magento\Customer\Model\Session as CustomerSession;
 use Psr\Log\LoggerInterface;
 use Magento\Framework\Message\ManagerInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Framework\Stdlib\CookieManagerInterface;
 use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
-use Magento\Framework\Api\SearchCriteriaBuilder;
 
 class PaymentFail implements HttpPostActionInterface
 {
@@ -27,15 +25,13 @@ class PaymentFail implements HttpPostActionInterface
     protected $jsonSerializer;
     protected $orderManagement;
     protected $checkoutSession;
+    protected $customerSession;
     protected $logger;
     protected $messageManager;
     protected $quoteRepository;
     protected $encryptor;
     protected $cookieManager;
     protected $cookieMetadataFactory;
-    protected $searchCriteriaBuilder;
-
-    protected $current_order_id;
 
     public function __construct(
         JsonFactory $jsonFactory,
@@ -44,13 +40,13 @@ class PaymentFail implements HttpPostActionInterface
         JsonSerializer $jsonSerializer,
         OrderManagementInterface $orderManagement,
         CheckoutSession $checkoutSession,
+        CustomerSession $customerSession,
         LoggerInterface $logger,
         ManagerInterface $messageManager,
         CartRepositoryInterface $quoteRepository,
         EncryptorInterface $encryptor,
         CookieManagerInterface $cookieManager,
-        CookieMetadataFactory $cookieMetadataFactory,
-        SearchCriteriaBuilder $searchCriteriaBuilder
+        CookieMetadataFactory $cookieMetadataFactory
     ) {
         $this->jsonFactory = $jsonFactory;
         $this->request = $request;
@@ -58,15 +54,13 @@ class PaymentFail implements HttpPostActionInterface
         $this->jsonSerializer = $jsonSerializer;
         $this->orderManagement = $orderManagement;
         $this->checkoutSession = $checkoutSession;
+        $this->customerSession = $customerSession;
         $this->logger = $logger;
         $this->messageManager = $messageManager;
         $this->quoteRepository = $quoteRepository;
         $this->encryptor = $encryptor;
         $this->cookieManager = $cookieManager;
         $this->cookieMetadataFactory = $cookieMetadataFactory;
-        $this->searchCriteriaBuilder = $searchCriteriaBuilder;
-
-        $this->current_order_id = $this->checkoutSession->getLastOrderId();
     }
 
     public function execute()
@@ -75,38 +69,60 @@ class PaymentFail implements HttpPostActionInterface
 
         try {
             $content = $this->request->getContent();
-            
             $params = $this->jsonSerializer->unserialize($content);
             $sessionId = isset($params['payment_session_id']) ? $params['payment_session_id'] : null;
-            $incrementId = isset($params['order_id']) ? $params['order_id'] : null;
-
-            $searchCriteria = $this->searchCriteriaBuilder
-                ->addFilter('increment_id', $incrementId, 'eq')
-                ->create();
-            $orders = $this->orderRepository->getList($searchCriteria)->getItems();
-            if (empty($orders)) {
-                throw new \Exception("Order not found for the given Increment ID.");
-            }
-            $order = reset($orders);
-            $orderId = $order->getId();
+            $orderId = isset($params['order_id']) ? $params['order_id'] : null;
 
             if (!$sessionId) {
                 throw new \Exception("Session ID is missing in request body.");
             }
 
-            if ($this->current_order_id && !empty($this->current_order_id) && is_numeric($this->current_order_id)) {
-                if ((string)$orderId !== (string)$this->current_order_id) {
-                    throw new \Exception("Access Denied: Invalid order ID");
-                }
+            if (!$orderId || !is_numeric($orderId)) {
+                throw new \Exception("Access Denied: Invalid order ID");
             }
-            else {
-                $token = $this->request->getCookie('payment_redirect_token');
-                if (!$token) {
-                    throw new \Exception("Access Denied: Invalid order ID");
+
+            $order = $this->orderRepository->get($orderId);
+            if (!$order || !$order->getId()) {
+                throw new \Exception("Order not found.");
+            }
+
+            // Validate ownership
+            if ($this->customerSession->isLoggedIn()) {
+                // For logged-in customers: validate customer ID
+                $customerId = $this->customerSession->getCustomerId();
+                if ($order->getCustomerId() != $customerId) {
+                    $this->logger->warning('PaymentFail: Customer ID mismatch', [
+                        'session_customer_id' => $customerId,
+                        'order_customer_id' => $order->getCustomerId(),
+                        'order_id' => $orderId
+                    ]);
+                    throw new \Exception("Access Denied: Invalid order");
                 }
-                $decryptedId = $this->encryptor->decrypt(base64_decode($token));
-                if ((string)$orderId !== (string)$decryptedId) {
-                    throw new \Exception("Access Denied: Invalid order ID");
+            } else {
+                // For guest users: validate via session first, then cookie
+                $sessionOrderId = $this->checkoutSession->getLastOrderId();
+
+                if ($sessionOrderId && $sessionOrderId == $orderId) {
+                    // Valid - order from current checkout session
+                } else {
+                    // Not in current session, validate cookie
+                    $token = $this->request->getCookie('payment_redirect_token');
+                    if (!$token) {
+                        throw new \Exception("Access Denied: Missing payment token");
+                    }
+                    try {
+                        $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+                        if ($decryptedId != $orderId) {
+                            $this->logger->warning('PaymentFail: Order ID validation failed', [
+                                'session_order_id' => $sessionOrderId,
+                                'cookie_order_id' => $decryptedId,
+                                'requested_order_id' => $orderId
+                            ]);
+                            throw new \Exception("Access Denied: Invalid payment session");
+                        }
+                    } catch (\Exception $e) {
+                        throw new \Exception("Access Denied: Invalid payment token");
+                    }
                 }
             }
 
@@ -117,7 +133,7 @@ class PaymentFail implements HttpPostActionInterface
             $currentState = $order->getState();
             if (!in_array($currentState, $allowedStates, true)) {
                 $this->logger->warning('Payment attempted on invalid order state', [
-                    'order_id' => $orderId,
+                    'order_id' => $order->getId(),
                     'current_state' => $currentState,
                     'allowed_states' => $allowedStates
                 ]);

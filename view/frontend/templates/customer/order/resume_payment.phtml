@@ -1,0 +1,18 @@
+<?php if ($block->canResumePayment()): ?>
+<div class="block block-order-details-payment">
+    <div class="block-title">
+        <strong><?= $block->escapeHtml(__('Payment Required')) ?></strong>
+    </div>
+    <div class="block-content">
+        <p><?= $block->escapeHtml(__('This order is awaiting payment. Click the button below to complete your payment.')) ?></p>
+        <div class="actions-toolbar">
+            <div class="primary">
+                <a href="<?= $block->escapeUrl($block->getResumePaymentUrl()) ?>"
+                   class="action primary">
+                    <span><?= $block->escapeHtml(__('Complete Payment')) ?></span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
