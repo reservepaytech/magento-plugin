@@ -4,6 +4,7 @@
 .idea/
 .phpunit.cache
 .phpunit.result.cache
+.php-cs-fixer.cache
 .DS_Store
 coverage.xml
 reports

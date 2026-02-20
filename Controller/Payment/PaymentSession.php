@@ -18,174 +18,174 @@ use Psr\Log\LoggerInterface;
 
 class PaymentSession implements HttpPostActionInterface
 {
-    const API_URL_STARTPAYMENT = 'https://api.reservepay.com/merchants/initiate-payment-flow';
+  const API_URL_STARTPAYMENT = 'https://api.reservepay.com/merchants/initiate-payment-flow';
 
-    protected $scopeConfig;
-    protected $jsonFactory;
-    protected $request;
-    protected $orderRepository;
-    protected $jsonSerializer;
-    protected $curl;
-    protected $urlBuilder;
-    protected $encryptor;
-    protected $customerSession;
-    protected $checkoutSession;
-    protected $logger;
+  protected $scopeConfig;
+  protected $jsonFactory;
+  protected $request;
+  protected $orderRepository;
+  protected $jsonSerializer;
+  protected $curl;
+  protected $urlBuilder;
+  protected $encryptor;
+  protected $customerSession;
+  protected $checkoutSession;
+  protected $logger;
 
-    public function __construct(
-        ScopeConfigInterface $scopeConfig,
-        JsonFactory $jsonFactory,
-        RequestInterface $request,
-        OrderRepositoryInterface $orderRepository,
-        JsonSerializer $jsonSerializer,
-        Curl $curl,
-        UrlInterface $urlBuilder,
-        EncryptorInterface $encryptor,
-        CustomerSession $customerSession,
-        CheckoutSession $checkoutSession,
-        LoggerInterface $logger
-    ) {
-        $this->scopeConfig = $scopeConfig;
-        $this->jsonFactory = $jsonFactory;
-        $this->request = $request;
-        $this->orderRepository = $orderRepository;
-        $this->jsonSerializer = $jsonSerializer;
-        $this->curl = $curl;
-        $this->urlBuilder = $urlBuilder;
-        $this->encryptor = $encryptor;
-        $this->customerSession = $customerSession;
-        $this->checkoutSession = $checkoutSession;
-        $this->logger = $logger;
-    }
+  public function __construct(
+    ScopeConfigInterface $scopeConfig,
+    JsonFactory $jsonFactory,
+    RequestInterface $request,
+    OrderRepositoryInterface $orderRepository,
+    JsonSerializer $jsonSerializer,
+    Curl $curl,
+    UrlInterface $urlBuilder,
+    EncryptorInterface $encryptor,
+    CustomerSession $customerSession,
+    CheckoutSession $checkoutSession,
+    LoggerInterface $logger
+  ) {
+    $this->scopeConfig = $scopeConfig;
+    $this->jsonFactory = $jsonFactory;
+    $this->request = $request;
+    $this->orderRepository = $orderRepository;
+    $this->jsonSerializer = $jsonSerializer;
+    $this->curl = $curl;
+    $this->urlBuilder = $urlBuilder;
+    $this->encryptor = $encryptor;
+    $this->customerSession = $customerSession;
+    $this->checkoutSession = $checkoutSession;
+    $this->logger = $logger;
+  }
 
-    public function execute()
-    {
-        $result = $this->jsonFactory->create();
+  public function execute()
+  {
+    $result = $this->jsonFactory->create();
 
-        try {
-            $content = $this->request->getContent();
-            $params = $this->jsonSerializer->unserialize($content);
-            $sessionId = isset($params['payment_session_id']) ? $params['payment_session_id'] : null;
-            $orderId = isset($params['order_id']) ? $params['order_id'] : null;
+    try {
+      $content = $this->request->getContent();
+      $params = $this->jsonSerializer->unserialize($content);
+      $sessionId = isset($params['payment_session_id']) ? $params['payment_session_id'] : null;
+      $orderId = isset($params['order_id']) ? $params['order_id'] : null;
 
-            if (!$sessionId) {
-                throw new \Exception("Session ID is missing in request body.");
-            }
+      if (!$sessionId) {
+        throw new \Exception("Session ID is missing in request body.");
+      }
 
-            if (!$orderId || !is_numeric($orderId)) {
-                throw new \Exception("Invalid order ID");
-            }
+      if (!$orderId || !is_numeric($orderId)) {
+        throw new \Exception("Invalid order ID");
+      }
 
-            $order = $this->orderRepository->get($orderId);
-            if (!$order || !$order->getId()) {
-                throw new \Exception("Order not found.");
-            }
+      $order = $this->orderRepository->get($orderId);
+      if (!$order || !$order->getId()) {
+        throw new \Exception("Order not found.");
+      }
 
-            // Validate ownership
-            if ($this->customerSession->isLoggedIn()) {
-                // For logged-in customers: validate customer ID
-                $customerId = $this->customerSession->getCustomerId();
-                if ($order->getCustomerId() != $customerId) {
-                    $this->logger->warning('PaymentSession: Customer ID mismatch', [
-                        'session_customer_id' => $customerId,
-                        'order_customer_id' => $order->getCustomerId(),
-                        'order_id' => $orderId
-                    ]);
-                    throw new \Exception("Access Denied: Invalid order");
-                }
-            } else {
-                // For guest users: validate via session first, then cookie
-                $sessionOrderId = $this->checkoutSession->getLastOrderId();
-
-                if ($sessionOrderId && $sessionOrderId == $orderId) {
-                    // Valid - order from current checkout session
-                } else {
-                    // Not in current session, validate cookie
-                    $token = $this->request->getCookie('payment_redirect_token');
-                    if (!$token) {
-                        throw new \Exception("Access Denied: Missing payment token");
-                    }
-                    try {
-                        $decryptedId = $this->encryptor->decrypt(base64_decode($token));
-                        if ($decryptedId != $orderId) {
-                            $this->logger->warning('PaymentSession: Order ID validation failed', [
-                                'session_order_id' => $sessionOrderId,
-                                'cookie_order_id' => $decryptedId,
-                                'requested_order_id' => $orderId
-                            ]);
-                            throw new \Exception("Access Denied: Invalid payment session");
-                        }
-                    } catch (\Exception $e) {
-                        throw new \Exception("Access Denied: Invalid payment token");
-                    }
-                }
-            }
-
-            $allowedStates = [
-                \Magento\Sales\Model\Order::STATE_NEW,
-                \Magento\Sales\Model\Order::STATE_PENDING_PAYMENT
-            ];
-            $currentState = $order->getState();
-            if (!in_array($currentState, $allowedStates, true)) {
-                $this->logger->warning("Payment attempted on invalid order state", [
-                    'order_id' => $orderId,
-                    'current_state' => $currentState,
-                    'allowed_states' => $allowedStates
-                ]);
-                throw new \Exception("Order is not in a valid state for payment processing.");
-            }
-
-            $amount = $order->getGrandTotal();
-            $currency = $order->getOrderCurrencyCode();
-            $encrypted = $this->scopeConfig->getValue(
-                'payment/reservepay_payment/apikey',
-                ScopeInterface::SCOPE_STORE
-            );
-            try {
-                $api_key = $this->encryptor->decrypt($encrypted);
-            } catch (\Exception $e) {
-                $this->logger->critical('Reservepay: Failed to decrypt API key.');
-                throw new \Exception("Payment gateway configuration error.");
-            }
-
-            $payload = [
-                'payment_session_id' => $sessionId,
-                'capture' => true,
-                'amount' => (int) round($amount * 100),
-                'currency' => $currency,
-                'return_url' => $this->urlBuilder->getUrl('/checkout/onepage/success')  // actually not used
-            ];
-            $this->curl->addHeader("User-Agent", "Magento2-ReservepayModule/1.0");
-            $this->curl->addHeader("Content-Type", "application/json");
-            $this->curl->addHeader("Accept", "application/json");
-            $this->curl->addHeader("Authorization", "Bearer " . $api_key);
-            $this->curl->setOption(CURLOPT_TIMEOUT, 10);
-            $params = $this->jsonSerializer->serialize($payload);
-            $this->curl->addHeader("Content-Length", strlen($params));
-
-            $this->curl->post(self::API_URL_STARTPAYMENT, $params);
-
-            $status_code = $this->curl->getStatus();
-            $body = $this->curl->getBody();
-            if ($status_code < 200 || $status_code >= 300) {
-                throw new \Exception("Reservepay API returned an error status=" . $status_code);
-            }
-            if (!$body || empty($body)) {
-                throw new \Exception("Reservepay API returned an empty response.");
-            }
-            $payment_id = $this->jsonSerializer->unserialize($body);
-            $payment = $order->getPayment();
-            $payment->setAdditionalInformation('reservepay_payment_id', $payment_id);
-            $this->orderRepository->save($order);
-            
-            $responseContent = $payment_id;
-
-        } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
-            $responseContent = ['status' => 'fail', 'message' => 'Order not found.'];
-        } catch (\Exception $e) {
-            $responseContent = ['status' => 'error', 'message' => $e->getMessage()];
+      // Validate ownership
+      if ($this->customerSession->isLoggedIn()) {
+        // For logged-in customers: validate customer ID
+        $customerId = $this->customerSession->getCustomerId();
+        if ($order->getCustomerId() != $customerId) {
+          $this->logger->warning('PaymentSession: Customer ID mismatch', [
+            'session_customer_id' => $customerId,
+            'order_customer_id' => $order->getCustomerId(),
+            'order_id' => $orderId
+          ]);
+          throw new \Exception("Access Denied: Invalid order");
         }
+      } else {
+        // For guest users: validate via session first, then cookie
+        $sessionOrderId = $this->checkoutSession->getLastOrderId();
 
-        return $result->setData($responseContent);
+        if ($sessionOrderId && $sessionOrderId == $orderId) {
+          // Valid - order from current checkout session
+        } else {
+          // Not in current session, validate cookie
+          $token = $this->request->getCookie('payment_redirect_token');
+          if (!$token) {
+            throw new \Exception("Access Denied: Missing payment token");
+          }
+          try {
+            $decryptedId = $this->encryptor->decrypt(base64_decode($token));
+            if ($decryptedId != $orderId) {
+              $this->logger->warning('PaymentSession: Order ID validation failed', [
+                'session_order_id' => $sessionOrderId,
+                'cookie_order_id' => $decryptedId,
+                'requested_order_id' => $orderId
+              ]);
+              throw new \Exception("Access Denied: Invalid payment session");
+            }
+          } catch (\Exception $e) {
+            throw new \Exception("Access Denied: Invalid payment token");
+          }
+        }
+      }
+
+      $allowedStates = [
+        \Magento\Sales\Model\Order::STATE_NEW,
+        \Magento\Sales\Model\Order::STATE_PENDING_PAYMENT
+      ];
+      $currentState = $order->getState();
+      if (!in_array($currentState, $allowedStates, true)) {
+        $this->logger->warning("Payment attempted on invalid order state", [
+          'order_id' => $orderId,
+          'current_state' => $currentState,
+          'allowed_states' => $allowedStates
+        ]);
+        throw new \Exception("Order is not in a valid state for payment processing.");
+      }
+
+      $amount = $order->getGrandTotal();
+      $currency = $order->getOrderCurrencyCode();
+      $encrypted = $this->scopeConfig->getValue(
+        'payment/reservepay_payment/apikey',
+        ScopeInterface::SCOPE_STORE
+      );
+      try {
+        $api_key = $this->encryptor->decrypt($encrypted);
+      } catch (\Exception $e) {
+        $this->logger->critical('Reservepay: Failed to decrypt API key.');
+        throw new \Exception("Payment gateway configuration error.");
+      }
+
+      $payload = [
+        'payment_session_id' => $sessionId,
+        'capture' => true,
+        'amount' => (int) round($amount * 100),
+        'currency' => $currency,
+        'return_url' => $this->urlBuilder->getUrl('/checkout/onepage/success')  // actually not used
+      ];
+      $this->curl->addHeader("User-Agent", "Magento2-ReservepayModule/1.0");
+      $this->curl->addHeader("Content-Type", "application/json");
+      $this->curl->addHeader("Accept", "application/json");
+      $this->curl->addHeader("Authorization", "Bearer " . $api_key);
+      $this->curl->setOption(CURLOPT_TIMEOUT, 10);
+      $params = $this->jsonSerializer->serialize($payload);
+      $this->curl->addHeader("Content-Length", strlen($params));
+
+      $this->curl->post(self::API_URL_STARTPAYMENT, $params);
+
+      $status_code = $this->curl->getStatus();
+      $body = $this->curl->getBody();
+      if ($status_code < 200 || $status_code >= 300) {
+        throw new \Exception("Reservepay API returned an error status=" . $status_code);
+      }
+      if (!$body || empty($body)) {
+        throw new \Exception("Reservepay API returned an empty response.");
+      }
+      $payment_id = $this->jsonSerializer->unserialize($body);
+      $payment = $order->getPayment();
+      $payment->setAdditionalInformation('reservepay_payment_id', $payment_id);
+      $this->orderRepository->save($order);
+      
+      $responseContent = $payment_id;
+
+    } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+      $responseContent = ['status' => 'fail', 'message' => 'Order not found.'];
+    } catch (\Exception $e) {
+      $responseContent = ['status' => 'error', 'message' => $e->getMessage()];
     }
+
+    return $result->setData($responseContent);
+  }
 }

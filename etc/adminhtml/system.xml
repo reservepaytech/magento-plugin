@@ -27,6 +27,12 @@
                     <label>API Key</label>
                     <backend_model>Magento\Config\Model\Config\Backend\Encrypted</backend_model>
                 </field>
+
+                <field id="webhook_signing_key" translate="label comment" type="obscure" sortOrder="7" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Webhook Signing Key</label>
+                    <comment><![CDATA[Used to verify webhook signatures from Reservepay. Found in your Reservepay dashboard under Webhooks.]]></comment>
+                    <backend_model>Magento\Config\Model\Config\Backend\Encrypted</backend_model>
+                </field>
             </group>
         </section>
     </system>

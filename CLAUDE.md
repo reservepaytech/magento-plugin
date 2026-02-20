@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Magento 2 payment module that integrates the Reservepay payment gateway. It implements a **hosted redirect payment flow** where customers are redirected to Reservepay's secure platform to complete payment.
+This is a Magento 2 payment module that integrates the Reservepay payment gateway. It implements a **hosted redirect payment flow** where customers are redirected to Reservepay's secure platform to complete payment. **Payment processing is handled server-side via webhooks** - the frontend SDK callbacks only trigger immediate redirects.
 
 **Module:** `Reservepay_Payment`
 **Namespace:** `Reservepay\Payment`
@@ -47,23 +47,29 @@ bin/magento cache:flush
 bin/magento cache:clean
 ```
 
+### Running Tests
+```bash
+# Run unit tests for this module
+vendor/bin/phpunit -c dev/tests/unit/phpunit.xml.dist app/code/Reservepay/Payment/Test/Unit/
+```
+
 ## Architecture Overview
 
 ### Payment Flow
 
-The module follows a **secure redirect pattern**:
+The module follows a **webhook-driven payment pattern**:
 
 1. **Order Creation** → Order placed in `STATE_PENDING_PAYMENT`
 2. **Security Token** → Plugin encrypts order ID into HTTP-only cookie (`payment_redirect_token`)
 3. **Form Redirect** → Customer redirected to `reservepay/payment/form`
-4. **Session Init** → Frontend calls `paymentsession` controller → API initiates payment
+4. **Session Init** → Frontend calls `paymentsession` controller → API initiates payment, stores `payment_id` in order
 5. **External Payment** → Customer completes payment on Reservepay hosted form
-6. **Callback** → SDK fires either `paymentsuccess` or `paymentfail` callback
-7. **Processing** → Success creates invoice and completes order; Failure restores cart
+6. **Frontend Redirect** → SDK fires `onPaymentSuccess` or `onPaymentFailed` → immediate redirect (no server calls)
+7. **Webhook Processing** → Reservepay sends webhook to `/reservepay/webhook/callback` → invoice/cancel/refund
 
 ### Key Controllers
 
-All payment controllers are in `Controller/Payment/`:
+**Payment Controllers** (`Controller/Payment/`):
 
 - **Form.php** - Renders payment form page (GET)
   - URL: `/reservepay/payment/form/order_id/{orderId}/`
@@ -75,23 +81,46 @@ All payment controllers are in `Controller/Payment/`:
 
 - **PaymentSession.php** - Initiates payment with API (POST, CSRF-disabled)
   - Calls Reservepay API to create payment session
-  - Returns: `{payment_id, session_id}`
+  - Stores `reservepay_payment_id` in order payment additional_info
+  - Returns: `payment_id`
 
-- **PaymentSuccess.php** - Verifies payment and creates invoice (POST, CSRF-disabled)
-  - Validates payment with API
-  - Creates invoice on successful payment
-  - Handles idempotent processing
+**Webhook Controller** (`Controller/Webhook/`):
 
-- **PaymentFail.php** - Cancels order and restores cart (POST, CSRF-disabled)
-  - Cancels order
-  - Restores quote to cart
-  - Clears payment cookie
+- **Callback.php** - Receives webhooks from Reservepay (POST, CSRF-disabled)
+  - URL: `/reservepay/webhook/callback`
+  - Signature verification (currently commented out, ready to enable)
+  - Delegates to `Service/WebhookHandler` for business logic
+  - Returns: 200/400/500
 
-Routes are prefixed with `/reservepay/payment/` (configured in `etc/frontend/routes.xml`).
+Routes are prefixed with `/reservepay/` (configured in `etc/frontend/routes.xml`).
+
+### Webhook Handler
+
+`Service/WebhookHandler.php` contains all server-side payment processing logic:
+
+- **`handleEvent(array $data)`** - Routes by `event_type`
+- **`handlePaymentCompleted(paymentId, status, eventId)`** - SUCCESSFUL → invoice, FAILED → cancel
+- **`handlePaymentVoided(paymentId, eventId)`** - Cancel order
+- **`handlePaymentReversed(paymentId, eventId)`** - Create credit memo
+- **`findOrderByPaymentId(paymentId)`** - Lookup via `reservepay_payment_id` in payment additional_info
+
+**Idempotency:** Each event is tracked via `reservepay_processed_event_id` in order additional_info. Duplicate webhook deliveries are safely ignored.
+
+**Webhook Payload Format:**
+```json
+{
+  "event_type": "payment.completed",
+  "payment_id": "pay_abc123",
+  "status": "SUCCESSFUL",
+  "event_id": "evt_def456"
+}
+```
+
+**Supported Event Types:** `payment.completed`, `payment.voided`, `payment.reversed`
 
 **Required Controller Dependencies:**
 
-All payment controllers (OrderData, PaymentSession, PaymentSuccess, PaymentFail) require these dependencies:
+Frontend payment controllers (Form, OrderData, PaymentSession) require these dependencies:
 
 ```php
 use Magento\Sales\Api\OrderRepositoryInterface;
@@ -113,7 +142,7 @@ public function __construct(
 )
 ```
 
-**Critical:** All controllers use direct entity_id lookup (`$this->orderRepository->get($orderId)`) instead of SearchCriteria filtering.
+**Critical:** Frontend controllers use direct entity_id lookup (`$this->orderRepository->get($orderId)`). The webhook handler uses `findOrderByPaymentId()` to look up orders by `reservepay_payment_id` in payment additional_info.
 
 ### Security Mechanisms
 
@@ -121,11 +150,11 @@ public function __construct(
 - Plugin `SetOrderTokenCookie` intercepts checkout payment save
 - Encrypts order ID using `Magento\Framework\Encryption\EncryptorInterface`
 - Sets HTTP-only, Secure, SameSite=Strict cookie (10-minute TTL)
-- Controllers validate access via session OR encrypted cookie
+- Used by Form, OrderData, and PaymentSession controllers for guest checkout validation
 
 **Ownership Validation (Dual-Path Pattern):**
 
-This module implements a **session-first, cookie-fallback** validation pattern that supports both fresh checkout and resume payment scenarios:
+Frontend controllers implement a **session-first, cookie-fallback** validation pattern:
 
 **For Logged-in Customers:**
 ```php
@@ -144,7 +173,7 @@ $sessionOrderId = $this->checkoutSession->getLastOrderId();
 if ($sessionOrderId && $sessionOrderId == $orderId) {
     // Valid - order from current checkout session
 } else {
-    // Step 2: Fallback to cookie validation (resume payment)
+    // Step 2: Fallback to cookie validation
     $token = $this->request->getCookie('payment_redirect_token');
     if (!$token) {
         throw new \Exception('Access Denied: Missing payment token');
@@ -156,13 +185,10 @@ if ($sessionOrderId && $sessionOrderId == $orderId) {
 }
 ```
 
-**Why This Pattern?**
-
-Guest users may have multiple scenarios:
-1. **Fresh Checkout** - Order just created, session still active → `CheckoutSession->getLastOrderId()` works
-2. **Resume Payment** - Guest closed browser, reopened resume link → Session expired, cookie validation needed
-3. **Multiple Orders** - Guest has orders 31, 32, 33 → Cookie allows resuming any order, not just the last one
-4. **Multi-Tab** - Guest opens payment in multiple tabs → Each tab maintains its own context via URL path parameter
+**Webhook Signature Verification:**
+- Format: `sha256=` + `hash('sha256', $rawBody . $signingKey)`
+- Signing key stored encrypted in `payment/reservepay_payment/webhook_signing_key`
+- Currently commented out in `Controller/Webhook/Callback.php` - enable once signing key is configured in Reservepay dashboard
 
 **Order State Validation:**
 - Only processes orders in `STATE_NEW` or `STATE_PENDING_PAYMENT`
@@ -175,8 +201,8 @@ Guest users may have multiple scenarios:
 
 **CSRF Protection:**
 - Controllers implement `CsrfAwareActionInterface` but explicitly disable CSRF
-- Necessary for SDK callbacks from external domain
-- Mitigated by token cookie + order state validation
+- Necessary for SDK callbacks from external domain and webhook delivery
+- Mitigated by token cookie + order state validation (frontend) and signature verification (webhook)
 
 **URL Routing Pattern:**
 - Payment form URLs use path parameters: `/reservepay/payment/form/order_id/34/`
@@ -195,17 +221,12 @@ Guest users may have multiple scenarios:
    - Returns: `payment_id`
    - Purpose: Initialize payment session
 
-2. **POST `/merchants/find-payment`** (PaymentSuccess)
-   - Payload: `{payment_id}`
-   - Returns: `{status: 'SUCCESSFUL'|...}`
-   - Purpose: Verify payment completion
-
 ### Configuration Files
 
 - **`etc/module.xml`** - Module metadata and dependencies
 - **`etc/config.xml`** - Default payment method configuration
 - **`etc/di.xml`** - Dependency injection (registers token cookie plugin)
-- **`etc/adminhtml/system.xml`** - Admin configuration UI fields
+- **`etc/adminhtml/system.xml`** - Admin configuration UI fields (includes `webhook_signing_key`)
 - **`etc/frontend/routes.xml`** - Frontend URL routing
 - **`etc/csp_whitelist.xml`** - Whitelists `sdk.reservepay.com` for SDK loading
 
@@ -220,34 +241,39 @@ Guest users may have multiple scenarios:
 - `view/frontend/web/js/view/payment/method-renderer/reservepay.js` - Method renderer
 
 **Template:**
-- `view/frontend/templates/form.phtml` - Loads Reservepay SDK and handles payment callbacks
+- `view/frontend/templates/form.phtml` - Loads Reservepay SDK; callbacks are immediate redirects (no server calls)
 
 **Block:**
 - `Block/Form.php` - Data provider for template with order validation methods
 
 ### Critical Implementation Details
 
-**Idempotent Success Handling:**
-- `PaymentSuccess` stores `reservepay_processed_payment_id` in order's additional information
-- Prevents duplicate invoice creation if callback fires multiple times
-
-**Cart Restoration:**
-- `PaymentFail` restores the quote to active state
-- Clears reservation and replaces checkout session
-- Customer can retry checkout without re-adding items
+**Webhook Idempotency:**
+- `WebhookHandler` stores `reservepay_processed_event_id` in order's additional information
+- Prevents duplicate invoice creation or order cancellation on webhook redelivery
 
 **Offline Invoice Capture:**
 - Uses `Magento\Sales\Model\Order\Invoice::CAPTURE_OFFLINE`
 - Payment already captured by gateway, Magento just records it
 
+**Credit Memo on Reversal:**
+- `payment.reversed` webhook triggers credit memo creation
+- Requires order to have at least one invoice
+
 **Order State Transitions:**
 - Initial: `STATE_NEW` → `STATE_PENDING_PAYMENT`
-- Success: `STATE_PENDING_PAYMENT` → `STATE_PROCESSING`
-- Failure: `STATE_PENDING_PAYMENT` → `STATE_CANCELED`
+- Success (webhook): `STATE_PENDING_PAYMENT` → `STATE_PROCESSING`
+- Failure (webhook): `STATE_PENDING_PAYMENT` → `STATE_CANCELED`
+- Reversal (webhook): `STATE_PROCESSING` → refunded via credit memo
+
+**No Cart Restoration on Webhook Failure:**
+- Webhooks run without customer session context
+- Cart restoration is not possible server-side
+- Customer sees cart page on redirect and can retry checkout
 
 ### File Reference Patterns
 
-When modifying controllers, use this access validation pattern (found in all payment controllers):
+When modifying frontend controllers, use this access validation pattern:
 
 ```php
 // Logged-in customer validation
@@ -289,43 +315,96 @@ if ($this->customerSession->isLoggedIn()) {
 }
 ```
 
-### Comparison with Other Payment Gateways
-
-**Reservepay vs Omise (Guest Checkout Patterns)**
-
-| Feature | Reservepay | Omise |
-|---------|-----------|-------|
-| **Token Type** | Encrypted order ID | Random 64-char hex |
-| **Token Storage** | HTTP-only encrypted cookie | URL query parameter + payment additional info |
-| **Order Retrieval** | Session + Cookie fallback | `CheckoutSession->getLastRealOrder()` only |
-| **Resume After Session Expires** | ✅ Yes (cookie persists) | ❌ No (requires active session) |
-| **Multiple Orders (Guest)** | ✅ Yes (cookie per order) | ❌ Only last order in session |
-| **Multi-Tab Support** | ✅ Yes (URL path parameter) | ⚠️ Limited (session-based) |
-| **URL Pattern** | `/form/order_id/34/` | `/callback/offsite?token=abc123...` |
-| **Security Validation** | Customer ID / Session / Cookie | Session + Token match |
-
-**Why Reservepay's Approach is More Robust:**
-
-1. **Persistent Resume Payment** - Cookie allows guests to resume payment even after closing browser, while Omise requires active session
-2. **Multiple Order Support** - Guests can have orders 31, 32, 33 and resume any of them, not just the most recent
-3. **Multi-Tab Friendly** - Each tab maintains context via URL path parameter, no cookie conflicts
-4. **Graceful Degradation** - Session first (fast), cookie fallback (reliable)
-
-**Omise's Limitations (Reference: `omise-magento/Controller/Callback/Offsite.php`):**
-- Relies entirely on `$this->session->getLastRealOrder()` which requires active CheckoutSession
-- Token in URL only prevents unauthorized access, doesn't help if session expires
-- Guest closing browser loses ability to complete payment (session-dependent)
-
 ### Security Considerations
-
-Recent fixes address:
-- **Internal Order ID Exposure** - Avoid exposing internal order IDs in frontend
-- **Missing Order State Validation** - Always validate order state before processing
-- **API Key Decryption** - Handle decryption failures gracefully with fallback
 
 When working with payment processing:
 - Always validate order state before modifications
-- Use increment_id (visible ID) for frontend/API communication
-- Use entity_id (internal ID) only for backend validation
-- Never skip cookie deletion after payment completion
+- Use entity_id (internal ID) for all backend operations - it's passed via URL path parameter
+- Use increment_id (visible ID) only for display purposes (order confirmation emails, admin grid)
 - Log warnings for invalid states instead of silently failing
+- Frontend controllers: validate customer ownership (customer ID for logged-in, session/cookie for guests)
+- Webhook controller: validate via signature verification (no session/cookie available)
+- Webhook handler: always check idempotency via `reservepay_processed_event_id`
+
+## Troubleshooting
+
+### DI Compilation Issues
+
+If you encounter DI compilation errors after adding dependencies to controllers:
+
+**Problem:** "Directory /app/generated/code/Magento cannot be deleted" warnings
+**Solution:**
+```bash
+# Try setup:upgrade first (regenerates DI and applies schema changes)
+bin/magento setup:upgrade
+
+# If that fails, clear generated code and try again
+rm -rf generated/code/*
+bin/magento setup:di:compile
+
+# Last resort: Clear everything
+rm -rf var/cache/* var/page_cache/* generated/*
+bin/magento setup:upgrade
+```
+
+**Common Causes:**
+- Adding new constructor parameters without proper type hints
+- Changing constructor parameter order
+- Missing use statements for dependency classes
+- Circular dependencies in DI
+
+### Payment Form Not Loading (Missing CSS)
+
+**Problem:** Page renders without styling after `setup:upgrade`
+**Solution:**
+```bash
+# Deploy static content (required after setup:upgrade)
+bin/magento setup:static-content:deploy -f
+
+# Flush cache
+bin/magento cache:flush
+```
+
+### Order ID Mismatch Errors
+
+**Problem:** "Order not found" or "Invalid order ID"
+**Cause:** Confusing entity_id (34) with increment_id (000000034)
+
+**Solution:**
+- Frontend always passes entity_id via URL: `/form/order_id/34/`
+- Backend uses direct lookup: `$this->orderRepository->get($orderId)`
+- Never use SearchCriteria to filter by increment_id
+- increment_id is for display only (emails, customer account pages)
+
+### CSRF Validation Errors
+
+**Problem:** 302 redirects or CSRF validation failures on POST endpoints
+
+**Current Implementation:**
+- All payment controllers implement `CsrfAwareActionInterface`
+- CSRF is explicitly disabled (returns `null` for token validation)
+- Security provided by: order state validation + customer/session/cookie validation (frontend) or signature verification (webhook)
+- X-Requested-With header sent by frontend for additional protection
+
+**Do NOT:**
+- Send form_key in POST body (handled via cookies automatically)
+- Enable CSRF validation (breaks SDK callbacks and webhook delivery)
+
+### Webhook Debugging
+
+**Problem:** Webhooks not processing orders
+
+**Check:**
+1. Verify webhook URL is configured in Reservepay dashboard: `https://yourdomain.com/reservepay/webhook/callback`
+2. Check `var/log/system.log` for webhook-related log entries
+3. Verify `reservepay_payment_id` is stored in order payment additional_info
+4. Check order state (must be `STATE_NEW` or `STATE_PENDING_PAYMENT` for invoice/cancel)
+
+**Debug Pattern:**
+```php
+$this->logger->info('Webhook debug', [
+    'event_type' => $data['event_type'],
+    'payment_id' => $data['payment_id'],
+    'event_id' => $data['event_id'],
+]);
+```

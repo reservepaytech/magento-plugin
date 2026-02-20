@@ -1,8 +1,6 @@
 <?php
 $orderdata_url = $block->escapeUrl($block->getUrl('reservepay/payment/orderdata'));
 $paymentsession_url = $block->escapeUrl($block->getUrl('reservepay/payment/paymentsession'));
-$paymentsuccess_url = $block->escapeUrl($block->getUrl('reservepay/payment/paymentsuccess'));
-$paymentfail_url = $block->escapeUrl($block->getUrl('reservepay/payment/paymentfail'));
 $checkout_url = $block->escapeUrl($block->getUrl('checkout/cart'));
 $orderreceived_url = $block->escapeUrl($block->getUrl('checkout/onepage/success'));
 $orderId = (int) $block->getRequest()->getParam('order_id');
@@ -77,48 +75,9 @@ $orderId = (int) $block->getRequest()->getParam('order_id');
               window.location.href = <?php echo json_encode($checkout_url); ?>;
             },
             async onPaymentSuccess(sessionId) {
-              try {
-                var response = await fetch(<?php echo json_encode($paymentsuccess_url); ?>, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                  },
-                  body: JSON.stringify({
-                    payment_session_id: sessionId,
-                    order_id: orderId
-                  }),
-                  credentials: 'same-origin',
-                });
-                if (response.ok) {
-                  var status = await response.json();
-                  if (status === 'SUCCESSFUL') {
-                    window.location.href = <?php echo json_encode($orderreceived_url); ?>;
-                    return;
-                  }
-                }
-              } catch (e) {
-                console.error('Error verifying payment success', e);
-              }
-              window.location.href = <?php echo json_encode($checkout_url); ?>;
+              window.location.href = <?php echo json_encode($orderreceived_url); ?>;
             },
             async onPaymentFailed(sessionId) {
-              try {
-                await fetch(<?php echo json_encode($paymentfail_url); ?>, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                  },
-                  body: JSON.stringify({
-                    payment_session_id: sessionId,
-                    order_id: orderId
-                  }),
-                  credentials: 'same-origin',
-                });
-              } catch (e) {
-                console.error('Error handling payment failure', e);
-              }
               window.location.href = <?php echo json_encode($checkout_url); ?>;
             }
           }
