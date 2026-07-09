@@ -12,7 +12,7 @@ This module integrates the **Reservepay** payment gateway into Magento 2. It all
 ## Requirements
 
 *   Magento 2.3.x or higher
-*   PHP 7.3 or higher
+*   PHP 7.3 or higher, below PHP 8.0
 *   Valid Reservepay Merchant Credentials (Merchant ID, Installation ID, API Key)
 
 ## Installation
