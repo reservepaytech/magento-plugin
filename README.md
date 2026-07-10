@@ -19,7 +19,7 @@ This module integrates the **Reservepay** payment gateway into Magento 2. It all
 
 1.  **Download the module with Composer**
     Use Composer to add the module into your store:
-    `composer require reservepay/payment`
+    `composer require reservepay/reservepay-magento`
 
 2.  **Enable the module**
     Run the following commands in your Magento root directory:
