@@ -12,14 +12,14 @@ This module integrates the **Reservepay** payment gateway into Magento 2. It all
 ## Requirements
 
 *   Magento 2.3.x or higher
-*   PHP 7.3 or higher
+*   PHP 7.3 or higher, below PHP 8.0
 *   Valid Reservepay Merchant Credentials (Merchant ID, Installation ID, API Key)
 
 ## Installation
 
-1.  **Upload the module**
-    Extract the module files into your Magento installation directory:
-    `app/code/Reservepay/Payment`
+1.  **Download the module with Composer**
+    Use Composer to add the module into your store:
+    `composer require reservepay/reservepay-magento`
 
 2.  **Enable the module**
     Run the following commands in your Magento root directory:
