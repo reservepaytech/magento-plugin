@@ -25,6 +25,7 @@ use Psr\Log\LoggerInterface;
 use Magento\Framework\Stdlib\CookieManagerInterface;
 use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
 use Magento\Framework\Api\SearchCriteriaBuilder;
+use Reservepay\Payment\Model\ClientInfo;
 
 class PaymentSuccess implements HttpPostActionInterface
 {
@@ -184,7 +185,8 @@ class PaymentSuccess implements HttpPostActionInterface
             $payload = [
                 'payment_id' => $paymentId,
             ];
-            $this->curl->addHeader("User-Agent", "Magento2-ReservepayModule/1.0");
+            $this->curl->addHeader("User-Agent", ClientInfo::TOKEN);
+            $this->curl->addHeader("Client-Version", ClientInfo::TOKEN);
             $this->curl->addHeader("Content-Type", "application/json");
             $this->curl->addHeader("Accept", "application/json");
             $this->curl->addHeader("Authorization", "Bearer " . $api_key);

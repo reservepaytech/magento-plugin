@@ -16,6 +16,7 @@ use Magento\Framework\UrlInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Checkout\Model\Session as CheckoutSession;
 use Magento\Framework\Api\SearchCriteriaBuilder;
+use Reservepay\Payment\Model\ClientInfo;
 
 class PaymentSession implements HttpPostActionInterface
 {
@@ -131,7 +132,8 @@ class PaymentSession implements HttpPostActionInterface
                 'currency' => $currency,
                 'return_url' => $this->urlBuilder->getUrl('/checkout/onepage/success')  // actually not used
             ];
-            $this->curl->addHeader("User-Agent", "Magento2-ReservepayModule/1.0");
+            $this->curl->addHeader("User-Agent", ClientInfo::TOKEN);
+            $this->curl->addHeader("Client-Version", ClientInfo::TOKEN);
             $this->curl->addHeader("Content-Type", "application/json");
             $this->curl->addHeader("Accept", "application/json");
             $this->curl->addHeader("Authorization", "Bearer " . $api_key);
