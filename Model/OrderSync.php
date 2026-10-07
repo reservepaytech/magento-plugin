@@ -29,6 +29,10 @@ use Reservepay\Payment\Model\Api\FoundPayment;
  */
 class OrderSync
 {
+    // Anyone holding the order token can start sessions; a cap keeps the attempt list and each sync's API calls bounded.
+    private const MAX_ATTEMPTS = 10;
+    private const SESSION_ID_PATTERN = '/^pse_[A-Za-z0-9]{1,64}$/';
+
     public const ATTEMPTS = 'reservepay_attempts';
     public const PAID_ATTEMPT = 'reservepay_paid_attempt';
     public const EXTRA_CAPTURES = 'reservepay_extra_captures';
@@ -89,6 +93,10 @@ class OrderSync
 
     private function startAttemptLocked(int $orderId, string $sessionId): bool
     {
+        if (!preg_match(self::SESSION_ID_PATTERN, $sessionId)) {
+            $this->logger->warning('Reservepay payment start refused for an invalid session id', ['order_id' => $orderId]);
+            return false;
+        }
         $order = $this->load($orderId);
         if ($order->getState() !== Order::STATE_PENDING_PAYMENT) {
             $this->logger->warning('Reservepay payment start refused for an order that is not pending payment', [
@@ -101,6 +109,10 @@ class OrderSync
         $payment = $order->getPayment();
         $attempts = $this->attempts($payment);
         $index = $this->indexOf($attempts, 'session_id', $sessionId);
+        if ($index === null && count($attempts) >= self::MAX_ATTEMPTS) {
+            $this->logger->warning('Reservepay attempt limit reached', ['order' => $order->getIncrementId()]);
+            return false;
+        }
         if ($index === null) {
             // Saved before initiate, so a payment that initiate creates is always on record for the reconciler.
             $externalId = $this->externalId->forAttempt(
