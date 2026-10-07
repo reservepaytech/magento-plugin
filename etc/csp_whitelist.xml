@@ -3,7 +3,23 @@
     <policies>
         <policy id="script-src">
             <values>
-                <value id="reservepay" type="host">sdk.reservepay.com</value>
+                <value id="reservepay_sdk" type="host">sdk.reservepay.com</value>
+            </values>
+        </policy>
+        <policy id="frame-src">
+            <values>
+                <value id="reservepay_sdk" type="host">sdk.reservepay.com</value>
+            </values>
+        </policy>
+        <policy id="connect-src">
+            <values>
+                <value id="reservepay_sdk" type="host">sdk.reservepay.com</value>
+                <value id="reservepay_api" type="host">api.reservepay.com</value>
+            </values>
+        </policy>
+        <policy id="img-src">
+            <values>
+                <value id="reservepay_sdk" type="host">sdk.reservepay.com</value>
             </values>
         </policy>
     </policies>

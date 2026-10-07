@@ -1,22 +1,35 @@
- {
-   "name": "reservepay/reservepay-magento",
-   "description": "Reservepay Payment Service for Magento 2",
-   "type": "magento2-module",
-   "license": [
-     "OSL-3.0",
-     "AFL-3.0"
-   ],
-   "require": {
-     "php": "^7.3",
-      "magento/module-payment": "100.1.*",
-      "magento/module-checkout": "100.1.*",
-      "magento/module-sales": "100.1.*",
-      "magento/framework": "100.1.*"
-   },
-   "autoload": {
-     "files": [ "registration.php" ],
-     "psr-4": {
-       "Reservepay\\Payment\\": ""
-     }
-   }
- }
+{
+    "name": "reservepay/reservepay-magento",
+    "description": "Reservepay payments for Magento 2",
+    "type": "magento2-module",
+    "version": "2.0.0",
+    "license": [
+        "OSL-3.0",
+        "AFL-3.0"
+    ],
+    "require": {
+        "php": "~8.2.0||~8.3.0||~8.4.0||~8.5.0",
+        "magento/framework": "^103.0.7",
+        "magento/module-checkout": "^100.4.7",
+        "magento/module-config": "^101.2.7",
+        "magento/module-cron": "^100.4.7",
+        "magento/module-csp": "^100.4.6",
+        "magento/module-payment": "^100.4.7",
+        "magento/module-sales": "^103.0.7",
+        "magento/module-store": "^101.1.7"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Reservepay\\Payment\\": ""
+        }
+    },
+    "scripts": {
+        "test": [
+            "php tests/payment-core-test.php",
+            "php tests/payment-groups-test.php"
+        ]
+    }
+}

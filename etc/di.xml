@@ -1,8 +1,108 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
-    <type name="Magento\Checkout\Api\PaymentInformationManagementInterface">
-        <plugin name="reservepay_payment_secure_token_cookie" type="Reservepay\Payment\Plugin\SetOrderTokenCookie"/>
+    <virtualType name="Reservepay\Payment\Logger\Handler" type="Magento\Framework\Logger\Handler\Base">
+        <arguments>
+            <argument name="fileName" xsi:type="string">/var/log/reservepay.log</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Reservepay\Payment\Logger" type="Magento\Framework\Logger\Monolog">
+        <arguments>
+            <argument name="name" xsi:type="string">reservepay</argument>
+            <argument name="handlers" xsi:type="array">
+                <item name="file" xsi:type="object">Reservepay\Payment\Logger\Handler</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <!-- One payment method per payment group. Each shares reservepay_payment's settings (Model\PaymentMethod). -->
+    <virtualType name="Reservepay\Payment\Model\Method\Card" type="Reservepay\Payment\Model\PaymentMethod">
+        <arguments>
+            <argument name="data" xsi:type="array">
+                <item name="group" xsi:type="string">CARD</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Reservepay\Payment\Model\Method\Installment" type="Reservepay\Payment\Model\PaymentMethod">
+        <arguments>
+            <argument name="data" xsi:type="array">
+                <item name="group" xsi:type="string">INSTALLMENT</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Reservepay\Payment\Model\Method\ScanToPay" type="Reservepay\Payment\Model\PaymentMethod">
+        <arguments>
+            <argument name="data" xsi:type="array">
+                <item name="group" xsi:type="string">SCAN_TO_PAY</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Reservepay\Payment\Model\Method\MobileBanking" type="Reservepay\Payment\Model\PaymentMethod">
+        <arguments>
+            <argument name="data" xsi:type="array">
+                <item name="group" xsi:type="string">MOBILE_BANKING</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Reservepay\Payment\Model\Method\EwalletApp" type="Reservepay\Payment\Model\PaymentMethod">
+        <arguments>
+            <argument name="data" xsi:type="array">
+                <item name="group" xsi:type="string">EWALLET_APP</item>
+            </argument>
+        </arguments>
+    </virtualType>
+
+    <type name="Reservepay\Payment\Model\Api\Client">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
     </type>
-    <type name="Magento\Checkout\Api\GuestPaymentInformationManagementInterface">
-        <plugin name="reservepay_payment_secure_guest_token_cookie" type="Reservepay\Payment\Plugin\SetOrderTokenCookie"/>
+    <type name="Reservepay\Payment\Model\OrderSync">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Reservepay\Payment\Cron\Reconcile">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Reservepay\Payment\Model\PaymentAssets">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Reservepay\Payment\Controller\Payment\PaymentSession">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Reservepay\Payment\Controller\Payment\Form">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Reservepay\Payment\Controller\Payment\Sync">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
+    </type>
+
+    <type name="Magento\Csp\Model\CompositePolicyCollector">
+        <arguments>
+            <argument name="collectors" xsi:type="array">
+                <item name="reservepay_sdk" xsi:type="object" sortOrder="4">Reservepay\Payment\Model\Csp\SdkPolicyCollector</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <type name="Reservepay\Payment\Console\Command\Reconcile">
+        <arguments>
+            <argument name="job" xsi:type="object">Reservepay\Payment\Cron\Reconcile\Proxy</argument>
+        </arguments>
+    </type>
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="reservepay_reconcile" xsi:type="object">Reservepay\Payment\Console\Command\Reconcile</item>
+            </argument>
+        </arguments>
     </type>
 </config>

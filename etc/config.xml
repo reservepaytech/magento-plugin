@@ -1,16 +1,57 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Payment:etc/payment.xsd">
-
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
         <payment>
+            <!-- Holds the settings every group below reads. Never offered at checkout. -->
             <reservepay_payment>
                 <active>0</active>
-                <title>Reservepay Payment Service</title>
+                <title>Reservepay</title>
                 <model>Reservepay\Payment\Model\PaymentMethod</model>
-                <order_status>pending_payment</order_status>
+                <!-- Any value makes Magento call PaymentMethod::initialize() when the order is placed. -->
+                <payment_action>authorize_capture</payment_action>
             </reservepay_payment>
+            <reservepay_card>
+                <model>Reservepay\Payment\Model\Method\Card</model>
+                <title>Credit / debit card</title>
+                <sort_order>200</sort_order>
+            </reservepay_card>
+            <reservepay_installment>
+                <model>Reservepay\Payment\Model\Method\Installment</model>
+                <title>Installment</title>
+                <sort_order>201</sort_order>
+            </reservepay_installment>
+            <reservepay_scan_to_pay>
+                <model>Reservepay\Payment\Model\Method\ScanToPay</model>
+                <title>Scan to pay (PromptPay)</title>
+                <sort_order>202</sort_order>
+            </reservepay_scan_to_pay>
+            <reservepay_mobile_banking>
+                <model>Reservepay\Payment\Model\Method\MobileBanking</model>
+                <title>Mobile banking</title>
+                <sort_order>203</sort_order>
+            </reservepay_mobile_banking>
+            <reservepay_ewallet_app>
+                <model>Reservepay\Payment\Model\Method\EwalletApp</model>
+                <title>E-wallet</title>
+                <sort_order>204</sort_order>
+            </reservepay_ewallet_app>
         </payment>
+        <!-- The payment form page gets the same enforced, nonce-only script policy as Magento's own checkout page. -->
+        <csp>
+            <mode>
+                <storefront_reservepay_payment_form>
+                    <report_only>0</report_only>
+                </storefront_reservepay_payment_form>
+            </mode>
+            <policies>
+                <storefront_reservepay_payment_form>
+                    <scripts>
+                        <inline>0</inline>
+                        <event_handlers>1</event_handlers>
+                    </scripts>
+                </storefront_reservepay_payment_form>
+            </policies>
+        </csp>
     </default>
-
 </config>

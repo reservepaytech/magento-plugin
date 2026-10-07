@@ -20,8 +20,21 @@
                                                             <item name="children" xsi:type="array">
                                                                 <item name="reservepay_payment" xsi:type="array">
                                                                     <item name="component" xsi:type="string">Reservepay_Payment/js/view/payment/reservepay_payment</item>
+                                                                    <!-- Every group, offered or not: each method needs its billing address form. -->
                                                                     <item name="methods" xsi:type="array">
-                                                                        <item name="reservepay_payment" xsi:type="array">
+                                                                        <item name="reservepay_card" xsi:type="array">
+                                                                            <item name="isBillingAddressRequired" xsi:type="boolean">true</item>
+                                                                        </item>
+                                                                        <item name="reservepay_installment" xsi:type="array">
+                                                                            <item name="isBillingAddressRequired" xsi:type="boolean">true</item>
+                                                                        </item>
+                                                                        <item name="reservepay_scan_to_pay" xsi:type="array">
+                                                                            <item name="isBillingAddressRequired" xsi:type="boolean">true</item>
+                                                                        </item>
+                                                                        <item name="reservepay_mobile_banking" xsi:type="array">
+                                                                            <item name="isBillingAddressRequired" xsi:type="boolean">true</item>
+                                                                        </item>
+                                                                        <item name="reservepay_ewallet_app" xsi:type="array">
                                                                             <item name="isBillingAddressRequired" xsi:type="boolean">true</item>
                                                                         </item>
                                                                     </item>

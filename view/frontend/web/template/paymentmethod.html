@@ -1,4 +1,4 @@
-<div class="payment-method" data-bind="css: {'_active': (getCode() == isChecked())}">
+<div class="payment-method" data-bind="css: {'_active': (getCode() === isChecked())}">
     <div class="payment-method-title field choice">
         <input type="radio"
                name="payment[method]"
@@ -7,6 +7,16 @@
         <img data-bind="attr: { src: require.toUrl('Reservepay_Payment/images/reservepay_small.svg'), alt: '[Reservepay]' }" style="vertical-align: middle;" />
         <label class="label" data-bind="attr: {'for': getCode()}">
             <span data-bind="text: getTitle()"></span>
+            <!-- ko with: getGroup() -->
+            <span class="reservepay-logos" style="display: inline-flex; gap: 6px; align-items: center; vertical-align: middle; margin-left: 8px;">
+                <!-- ko foreach: logos -->
+                <img data-bind="attr: {src: src, alt: alt, title: alt}" width="24" height="24" style="width: 24px; height: 24px;"/>
+                <!-- /ko -->
+                <!-- ko if: more > 0 -->
+                <span data-bind="text: '+' + more" style="border: 1px solid #ccc; border-radius: 4px; font-size: 12px; line-height: 22px; min-width: 22px; padding: 0 3px; text-align: center;"></span>
+                <!-- /ko -->
+            </span>
+            <!-- /ko -->
         </label>
     </div>
 
