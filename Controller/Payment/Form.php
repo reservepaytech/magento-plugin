@@ -15,6 +15,7 @@ use Psr\Log\LoggerInterface;
 use Reservepay\Payment\Model\Config;
 use Reservepay\Payment\Model\OrderToken;
 use Reservepay\Payment\Model\PaymentGroups;
+use Reservepay\Payment\Model\Thb;
 
 /**
  * The payment page for one order, named by its token. Right after checkout there is no token yet: the order this
@@ -62,6 +63,7 @@ class Form implements HttpGetActionInterface
         return PaymentGroups::isReservepay($order->getPayment()?->getMethod())
             && $order->getState() === Order::STATE_PENDING_PAYMENT
             && (float) $order->getGrandTotal() > 0
+            && $order->getOrderCurrencyCode() === Thb::CODE
             && $this->isConfigured((int) $order->getStoreId());
     }
 

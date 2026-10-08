@@ -105,6 +105,14 @@ class OrderSync
             ]);
             return false;
         }
+        // The amount sent is the order's grand total read as baht, so a non-THB order must never start a payment.
+        if ($order->getOrderCurrencyCode() !== Thb::CODE) {
+            $this->logger->warning('Reservepay payment start refused for a non-THB order', [
+                'order' => $order->getIncrementId(),
+                'currency' => $order->getOrderCurrencyCode(),
+            ]);
+            return false;
+        }
 
         $payment = $order->getPayment();
         $attempts = $this->attempts($payment);
@@ -425,7 +433,7 @@ class OrderSync
         if ($found->amount !== Thb::satang($order->getGrandTotal())) {
             $mismatches[] = 'amount';
         }
-        if (strtoupper($found->currency) !== Thb::CODE) {
+        if (strtoupper($found->currency) !== Thb::CODE || $order->getOrderCurrencyCode() !== Thb::CODE) {
             $mismatches[] = 'currency';
         }
         return $mismatches;
