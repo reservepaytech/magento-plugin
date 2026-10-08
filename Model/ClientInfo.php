@@ -2,8 +2,8 @@
 
 namespace Reservepay\Payment\Model;
 
-final class ClientInfo
+class ClientInfo
 {
-    const VERSION = '1.0.0';
-    const TOKEN = 'Reservepay-Magento/v' . self::VERSION;
+    public const VERSION = '2.0.0';
+    public const TOKEN = 'Reservepay-Magento/v' . self::VERSION;
 }

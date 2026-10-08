@@ -1,0 +1,74 @@
+{
+  "source": "browser-sdk apps/web/src/components/payment-flow/payment-method-category.test.ts, describe getAvailablePaymentGroups",
+  "cases": [
+    {
+      "name": "no settings",
+      "settings": null,
+      "expected": []
+    },
+    {
+      "name": "no payment methods",
+      "settings": { "payment_methods": [] },
+      "expected": []
+    },
+    {
+      "name": "every group, in chooser order whatever the config order",
+      "settings": {
+        "interest_bearer": "merchant",
+        "payment_methods": [
+          { "name": "TRUEMONEY", "category": "ewallet_app" },
+          { "name": "KBANK", "category": "mobile_banking" },
+          { "name": "PROMPTPAY", "category": "scan_to_pay" },
+          { "name": "INSTALLMENT", "category": "card" },
+          { "name": "CARD", "category": "card" }
+        ]
+      },
+      "expected": ["CARD", "INSTALLMENT", "SCAN_TO_PAY", "MOBILE_BANKING", "EWALLET_APP"]
+    },
+    {
+      "name": "installment-only merchant: INSTALLMENT without a CARD row",
+      "settings": {
+        "interest_bearer": "merchant",
+        "payment_methods": [{ "name": "INSTALLMENT", "category": "card" }]
+      },
+      "expected": ["INSTALLMENT"]
+    },
+    {
+      "name": "CARD excludes INSTALLMENT but keeps plain card",
+      "settings": {
+        "interest_bearer": "customer",
+        "payment_methods": [
+          { "name": "CARD", "category": "card" },
+          { "name": "INSTALLMENT", "category": "card" }
+        ]
+      },
+      "expected": ["CARD", "INSTALLMENT"]
+    },
+    {
+      "name": "INSTALLMENT needs an interest bearer",
+      "settings": {
+        "interest_bearer": null,
+        "payment_methods": [
+          { "name": "CARD", "category": "card" },
+          { "name": "INSTALLMENT", "category": "card" }
+        ]
+      },
+      "expected": ["CARD"]
+    },
+    {
+      "name": "unknown categories are dropped",
+      "settings": {
+        "payment_methods": [
+          { "name": "APPLE_PAY", "category": "apple_pay" },
+          { "name": "PROMPTPAY", "category": "scan_to_pay" }
+        ]
+      },
+      "expected": ["SCAN_TO_PAY"]
+    },
+    {
+      "name": "category match is case-insensitive",
+      "settings": { "payment_methods": [{ "name": "kbank", "category": "MOBILE_BANKING" }] },
+      "expected": ["MOBILE_BANKING"]
+    }
+  ]
+}

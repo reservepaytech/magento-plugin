@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="sales_order_payment">
+        <column xsi:type="datetime" name="reservepay_last_checked" nullable="true"
+                comment="When the Reservepay reconciler last checked this order"/>
+        <index referenceId="SALES_ORDER_PAYMENT_RESERVEPAY_LAST_CHECKED" indexType="btree">
+            <column name="reservepay_last_checked"/>
+        </index>
+    </table>
+</schema>

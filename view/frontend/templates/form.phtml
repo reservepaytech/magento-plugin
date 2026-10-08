@@ -1,134 +1,136 @@
 <?php
+/** @var \Reservepay\Payment\Block\Form $block */
+/** @var \Magento\Framework\Escaper $escaper */
+/** @var \Magento\Framework\View\Helper\SecureHtmlRenderer $secureRenderer */
 
-$merchantid     = $block->getPaymentConfig('merchantid') ?? '';
-$installationid = $block->getPaymentConfig('installationid') ?? '';
-if (!$block->isPaymentConfigured()) {
-    die( 'Reservepay Payment gateway is not configured properly. All of merchant id, installation id, and api key must be set with the correct value.' );
-}
-
-$order = $block->getOrder();
-if ( ! $order || ! $order->getId() ) {
-    die( 'Order not found.' );
-}
-
-$amount = (float) $order->getGrandTotal();
-if (!$amount || $amount <= 0) {
-    die( 'Order not found.' );
-}
-
-// compute amount in minor unit (integer)
-$amount_minor = (int) round( (float) $amount * 100 );
-
-$paymentsession_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentsession' ) );
-$paymentsuccess_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentsuccess' ) );
-$paymentfail_url = $block->escapeUrl( $block->getUrl( 'reservepay/payment/paymentfail' ) );
-$checkout_url = $block->escapeUrl( $block->getUrl( 'checkout/cart' ) );
-$orderreceived_url = $block->escapeUrl( $block->getUrl( 'checkout/onepage/success') );
-$formKey = $block->getFormKey();
-
-$init_payload = json_encode( array(
-    'merchantId'         => $merchantid,
-    'installationId'     => $installationid,
-    'containerSelector'  => '#reservepay-payment-form',
-    'amount'             => $amount_minor,
-    'paymentsessionUrl'  => $paymentsession_url,
-    'paymentsuccessUrl'  => $paymentsuccess_url,
-    'paymentfailUrl'     => $paymentfail_url,
-    'orderId'            => $order->getIncrementId(),   // Public ID: "000000123"
-    'checkoutUrl'       => $checkout_url,
-    'orderreceivedUrl' => $orderreceived_url,
-    'formKey'           => $formKey,
-) );
-?>
-<script src="https://sdk.reservepay.com/js/v1/reservepay.js"></script>
-<div id="reservepay-payment-form"></div>
-<script>
-(function() {
+$script = '(function(data) {' . <<<'JS'
     'use strict';
 
-    var data = <?php echo $init_payload; ?>;
+    var container = document.querySelector(data.containerSelector);
 
     if (typeof window.Reservepay === 'undefined') {
         console.error('Reservepay SDK not loaded.');
         return;
     }
 
+    function showMessage(text, linkLabel, linkHref) {
+        container.textContent = '';
+        var message = document.createElement('p');
+        message.className = 'message notice';
+        message.textContent = text;
+        container.appendChild(message);
+        if (linkLabel) {
+            var link = document.createElement('a');
+            link.className = 'action primary';
+            link.href = linkHref;
+            link.textContent = linkLabel;
+            container.appendChild(link);
+        }
+    }
+
+    async function post(url, body) {
+        var response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify(Object.assign({ token: data.token }, body)),
+            credentials: 'same-origin',
+        });
+        var json = null;
+        try {
+            json = await response.json();
+        } catch (e) {
+            console.error('Reservepay: response is not JSON', e);
+        }
+        return { ok: response.ok, body: json };
+    }
+
+    // Every path only asks the server to check the order. The server decides from Reservepay what happened.
+    async function checkOrder(body) {
+        try {
+            var result = await post(data.syncUrl, body);
+            if (result.body && typeof result.body.outcome === 'string') {
+                return result.body.outcome;
+            }
+        } catch (e) {
+            console.error('Reservepay: order check failed', e);
+        }
+        return 'unknown';
+    }
+
+    // Callbacks and the poll can answer at once. The first one that leaves the page wins.
+    var leaving = false;
+    function leaveFor(outcome) {
+        if (!leaving && (outcome === 'paid' || outcome === 'refused')) {
+            leaving = true;
+            window.location.href = outcome === 'paid' ? data.successUrl : data.cartUrl;
+        }
+        return leaving;
+    }
+
+    // The payment form does not always report a captured payment, so the page also asks the server itself.
+    var polling = false;
+    function pollOrder() {
+        if (polling) {
+            return;
+        }
+        polling = true;
+        var stopAt = Date.now() + 30 * 60 * 1000;
+        (function next() {
+            setTimeout(async function () {
+                if (!leaveFor(await checkOrder({})) && Date.now() < stopAt) {
+                    next();
+                }
+            }, 15000);
+        })();
+    }
+
+    var formOptions = {
+        containerSelector: data.containerSelector,
+        amount: String(data.amount),
+        currency: data.currency,
+        async onPaymentSessionReady(sessionId) {
+            var started = false;
+            try {
+                var result = await post(data.paymentsessionUrl, { payment_session_id: sessionId });
+                started = result.ok && result.body !== null && result.body.status === 'ok';
+            } catch (e) {
+                console.error('Reservepay: payment session request failed', e);
+            }
+            if (started) {
+                pollOrder();
+            } else {
+                showMessage(data.messages.startFailed, data.messages.tryAgain, window.location.href);
+            }
+        },
+        async onPaymentSuccess() {
+            if (!leaveFor(await checkOrder({}))) {
+                showMessage(data.messages.processing, data.messages.viewOrder, data.orderUrl);
+            }
+        },
+        async onPaymentFailed() {
+            // Same order, new payment session: the reload starts the next attempt.
+            if (!leaveFor(await checkOrder({ failed: true }))) {
+                leaving = true;
+                window.location.reload();
+            }
+        },
+    };
+    // Opens the form on the group picked at checkout. SDKs without the option ignore it and show their chooser.
+    if (data.initialPaymentGroup) {
+        formOptions.initialPaymentGroup = data.initialPaymentGroup;
+    }
+
     window.Reservepay.initReservepayFormUI({
         formType: 'embedded',
         merchantId: String(data.merchantId),
         installationId: String(data.installationId),
-        formOptions: {
-            containerSelector: data.containerSelector,
-            amount: String(data.amount),
-            async onPaymentSessionReady(sessionId) {
-                try {
-                    await fetch(data.paymentsessionUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        body: JSON.stringify({
-                            payment_session_id: sessionId,
-                            order_id: data.orderId,
-                            form_key: data.formKey,
-                        }),
-                        credentials: 'same-origin',
-                    });
-                    return;
-                } catch (e) {
-                    console.error('Error sending payment session to server', e);
-                }
-                window.location.href = data.checkoutUrl;
-            },
-            async onPaymentSuccess(sessionId) {
-                try {
-                    var response = await fetch(data.paymentsuccessUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        body: JSON.stringify({
-                            payment_session_id: sessionId,
-                            order_id: data.orderId,
-                            form_key: data.formKey,
-                        }),
-                        credentials: 'same-origin',
-                    });
-                    if (response.ok) {
-                        var status = await response.json();
-                        if (status === 'SUCCESSFUL') {
-                            window.location.href = data.orderreceivedUrl;
-                            return;
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error verifying payment success', e);
-                }
-                window.location.href = data.checkoutUrl;
-            },
-            async onPaymentFailed(sessionId) {
-                try {
-                    var response = await fetch(data.paymentfailUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',                            
-                        },
-                        body: JSON.stringify({
-                            payment_session_id: sessionId,
-                            order_id: data.orderId,
-                            form_key: data.formKey,
-                        }),
-                        credentials: 'same-origin',
-                    });
-                } catch (e) {
-                    console.error('Error handling payment failure', e);
-                }
-                window.location.href = data.checkoutUrl;
-            }
-        }
+        formOptions: formOptions,
     });
-})();
-</script>
+JS . '})(' . $block->getInitPayload() . ');';
+?>
+<script src="<?= $escaper->escapeUrl($block->getSdkUrl()) ?>"></script>
+<div id="reservepay-payment-form"></div>
+<?= /* @noEscape */ $secureRenderer->renderTag('script', [], $script, false) ?>

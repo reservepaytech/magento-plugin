@@ -1,0 +1,11 @@
+<?php
+/** @var \Reservepay\Payment\Block\Info $block */
+/** @var \Magento\Framework\Escaper $escaper */
+?>
+<?= $escaper->escapeHtml($block->getTitle()) ?>{{pdf_row_separator}}
+<?php foreach ($block->getSpecificInformation() as $label => $value): ?>
+    <?= $escaper->escapeHtml($label) ?>:
+    <?= $escaper->escapeHtml(implode(' ', $block->getValueAsArray($value))) ?>
+    {{pdf_row_separator}}
+<?php endforeach; ?>
+<?= $escaper->escapeHtml(implode('{{pdf_row_separator}}', $block->getChildPdfAsArray())) ?>
