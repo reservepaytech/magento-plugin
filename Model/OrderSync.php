@@ -159,8 +159,8 @@ class OrderSync
         try {
             return $this->client->initiatePaymentFlow((int) $order->getStoreId(), [
                 'external_id' => $attempt['external_id'],
-                'amount' => (string) MinorUnits::fromMajor($order->getGrandTotal(), $order->getOrderCurrencyCode()),
-                'currency' => $order->getOrderCurrencyCode(),
+                'amount' => (string) Thb::satang($order->getGrandTotal()),
+                'currency' => Thb::CODE,
                 'payment_session_id' => $attempt['session_id'],
                 'capture' => true,
                 'return_url' => $this->urlBuilder->getUrl('checkout/onepage/success'),
@@ -421,12 +421,11 @@ class OrderSync
      */
     private function mismatches(Order $order, FoundPayment $found): array
     {
-        $currency = (string) $order->getOrderCurrencyCode();
         $mismatches = [];
-        if ($found->amount !== MinorUnits::fromMajor($order->getGrandTotal(), $currency)) {
+        if ($found->amount !== Thb::satang($order->getGrandTotal())) {
             $mismatches[] = 'amount';
         }
-        if (strtoupper($found->currency) !== strtoupper($currency)) {
+        if (strtoupper($found->currency) !== Thb::CODE) {
             $mismatches[] = 'currency';
         }
         return $mismatches;

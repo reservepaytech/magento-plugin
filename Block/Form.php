@@ -6,8 +6,8 @@ use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
 use Magento\Sales\Model\Order;
 use Reservepay\Payment\Model\Config;
-use Reservepay\Payment\Model\MinorUnits;
 use Reservepay\Payment\Model\PaymentGroups;
+use Reservepay\Payment\Model\Thb;
 
 /**
  * Renders the SDK form for the order and token that the Form controller validated and set.
@@ -28,14 +28,13 @@ class Form extends Template
     {
         /** @var Order $order */
         $order = $this->getData('order');
-        $currency = (string) $order->getOrderCurrencyCode();
         $storeId = (int) $order->getStoreId();
         return (string) json_encode([
             'merchantId' => $this->config->merchantId($storeId),
             'installationId' => $this->config->installationId($storeId),
             'containerSelector' => '#reservepay-payment-form',
-            'amount' => MinorUnits::fromMajor($order->getGrandTotal(), $currency),
-            'currency' => $currency,
+            'amount' => Thb::satang($order->getGrandTotal()),
+            'currency' => Thb::CODE,
             'initialPaymentGroup' => PaymentGroups::groupOf($order->getPayment()?->getMethod()),
             'paymentsessionUrl' => $this->getUrl('reservepay/payment/paymentsession'),
             'syncUrl' => $this->getUrl('reservepay/payment/sync'),

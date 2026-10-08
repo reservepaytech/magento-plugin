@@ -2,12 +2,12 @@
 // Run with: php tests/payment-core-test.php
 require __DIR__ . '/check.php';
 require __DIR__ . '/../Model/StatusMap.php';
-require __DIR__ . '/../Model/MinorUnits.php';
+require __DIR__ . '/../Model/Thb.php';
 require __DIR__ . '/../Model/ExternalId.php';
 
 use Reservepay\Payment\Model\ExternalId;
-use Reservepay\Payment\Model\MinorUnits;
 use Reservepay\Payment\Model\StatusMap;
+use Reservepay\Payment\Model\Thb;
 
 $statuses = [
     'SUCCESSFUL' => 'paid', 'PARTIALLY_REFUNDED' => 'paid', 'REFUNDED' => 'paid', 'DISPUTED' => 'paid',
@@ -26,13 +26,9 @@ check('unknown beats failed', StatusMap::aggregate(['failed', 'unknown']), 'unkn
 check('failed only when every attempt failed', StatusMap::aggregate(['failed', 'failed']), 'failed');
 check('no attempts', StatusMap::aggregate([]), 'unknown');
 
-check('THB 1234.56', MinorUnits::fromMajor('1234.56', 'THB'), 123456);
-check('THB float 0.29 rounds, not truncates', MinorUnits::fromMajor(0.29, 'THB'), 29);
-check('thb lowercase', MinorUnits::fromMajor('1', 'thb'), 100);
-check('JPY has no minor unit', MinorUnits::fromMajor('1500', 'JPY'), 1500);
-check('KRW has no minor unit', MinorUnits::fromMajor('1500.4', 'KRW'), 1500);
-check('KWD has three', MinorUnits::fromMajor('1.234', 'KWD'), 1234);
-check('BHD has three', MinorUnits::fromMajor('0.5', 'BHD'), 500);
+check('1234.56 baht in satang', Thb::satang('1234.56'), 123456);
+check('float 0.29 rounds, not truncates', Thb::satang(0.29), 29);
+check('whole baht', Thb::satang('1'), 100);
 
 check('prefix from host and random', ExternalId::makePrefix('demo.localhost', 'a1b2'), 'm2-demo-local-a1b2');
 check('host cut to 10 characters, no trailing dash', ExternalId::makePrefix('www.my-cat-shop.co.th', 'a1b2'), 'm2-www-my-cat-a1b2');

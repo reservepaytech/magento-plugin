@@ -6,7 +6,7 @@ This module adds **Reservepay** payments to Magento 2. After placing the order, 
 
 *   **One option per payment group**: Checkout shows one radio button for each group your Reservepay installation offers (card, installment, scan to pay, mobile banking, e-wallet), with the logos of the methods behind it. The payment form then opens on the group the customer picked.
 *   **Embedded payment form**: After placing the order, the customer goes to a payment page on your store (`reservepay/payment/form`) where the Reservepay payment form runs.
-*   **Server-side confirmation**: The browser never marks an order paid. The module asks Reservepay (`merchants/find-payment`) and completes the order only when the payment is successful and its amount, currency and payment id match the order.
+*   **Server-side confirmation**: The browser never marks an order paid. The module asks Reservepay (`merchants/find-payment`) and completes the order only when the payment is successful, its payment id matches, and it is in THB for the order's grand total.
 *   **Automatic Invoicing**: A paid order gets one invoice and a capture transaction whose id is the Reservepay payment id.
 *   **Reconciliation**: A cron job settles orders whose customer closed the tab after paying. It also flags money captured for an order that cannot take it, for a person to refund.
 *   **Retry on the same order**: When the payment form reports a failed payment, it reloads for the same order so the customer can try again. The order is not cancelled, because a failed payment can still turn successful later.
@@ -18,6 +18,7 @@ This module adds **Reservepay** payments to Magento 2. After placing the order, 
 *   The Luma checkout. Hyvä Checkout is not supported yet.
 *   Magento cron, for reconciliation (see [Reconciliation](#reconciliation))
 *   Valid Reservepay Merchant Credentials (Merchant ID, Installation ID, API Key)
+*   Thai baht (THB). Reservepay only takes THB for now, so the payment options show only when the cart's currency is THB. A store view that shows prices in another currency does not offer them.
 
 Tested with 2.4.7-p10 on PHP 8.2, 2.4.8-p5 on PHP 8.3, 2.4.9 on PHP 8.5 and Mage-OS 3.5.0 on PHP 8.4.
 
@@ -68,7 +69,7 @@ Each Reservepay payment group is its own Magento payment method. They all use th
 *   **Logos.** Each option shows up to three logos, then `+N` for the rest. They come from the payment assets manifest, by default `<SDK origin>/static/payment-assets/manifest.json`, fetched by the server, cached for 24 hours and revalidated with its ETag. The browser only loads the images. If the manifest or a logo is missing, the option shows its title alone. Only logos on the manifest's own origin are used, because that origin is the one the module adds to the page's `img-src` policy. No bank, wallet or card images ship with the module.
 *   **Titles.** Checkout shows the group title alone. The order, invoice, credit memo, their emails and PDFs, and the customer account show it as "Reservepay - <title>", for example "Reservepay - Credit / debit card". The admin order grid's Payment Method column shows the group title alone, because Magento builds it from the configured titles. The defaults are in `etc/config.xml` as `payment/reservepay_<group>/title`. Set a store view value to change one. The module ships Thai translations, see [Translations](#translations).
 *   **Order.** The radios follow the payment form's order: card, installment, scan to pay, mobile banking, e-wallet (`sort_order` 200 to 204).
-*   **Payment form.** The form passes the order's group to the payment form as `initialPaymentGroup` and its currency as `currency`, so the form opens on that group. A payment form version without this option ignores it and shows its own chooser.
+*   **Payment form.** The form passes the order's group to the payment form as `initialPaymentGroup` and `THB` as `currency`, so the form opens on that group. A payment form version without this option ignores it and shows its own chooser.
 *   **What was actually paid with.** The customer can switch methods inside the payment form. When the payment succeeds, the method Reservepay reports (`payment_method_display_name` and `payment_method` from `find-payment`, for example "Card (CARD)") is kept in `reservepay_paid_with`, shown as **Paid with** in the order's payment information, and added as an order note.
 *   **Caches.** The installation settings and the manifest stay in Magento's cache without a tag, so `bin/magento cache:flush` drops them and `cache:clean` does not. A failed fetch is retried after a minute.
 
@@ -88,7 +89,7 @@ Each Reservepay payment group is its own Magento payment method. They all use th
 | `FAILED`, `EXPIRED`, `REVERSED`, `VOIDED` | No change. When the payment form reports a failure, it reloads for the same order with "Your payment did not go through", and the next payment is a new attempt |
 | Not found, or the API is unreachable | No change, logged. An attempt with no payment id that is still not found 24 hours after it started counts as failed, because it never reached Reservepay |
 
-A successful payment whose amount or currency does not match the order puts the order **On Hold** with a note, logs an error, and is recorded in `reservepay_extra_captures`, so the reconciler does not flag it again.
+A successful payment that is not in THB, or whose amount does not match the order's grand total, puts the order **On Hold** with a note, logs an error, and is recorded in `reservepay_extra_captures`, so the reconciler does not flag it again.
 
 A payment page whose token is bad or expired sends the customer to the cart with the message "We could not open the payment page for this order." The order is unchanged.
 
@@ -145,7 +146,7 @@ Plain PHP scripts, no PHPUnit needed. Each prints one line per check and exits n
 
 ```bash
 composer test                        # the two scripts below, from the module directory
-php tests/payment-core-test.php      # StatusMap, MinorUnits, external_id prefix and format
+php tests/payment-core-test.php      # StatusMap, baht to satang, external_id prefix and format
 php tests/payment-groups-test.php    # group rules against tests/fixtures/payment-groups.json, plus logos
 ```
 
