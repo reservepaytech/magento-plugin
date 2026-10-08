@@ -78,13 +78,14 @@ Each Reservepay payment group is its own Magento payment method. They all use th
 ## How orders move
 
 1.  Placing the order with any Reservepay group puts it in **Pending Payment** with no email sent, and the browser goes to the payment form at `reservepay/payment/form?token=...`.
-2.  Each payment session on the form is one attempt with its own `external_id`, `<prefix>_order_<increment id>_<n>`, for example `m2-demo-local-3f9a_order_000000047_1`. The prefix is `m2-`, up to 10 characters of the store's host, and 4 random hex characters, the same shape as the WooCommerce plugin's `wc-` prefix. It is made once, on the first payment, and kept in Magento's `flag` table (`reservepay_external_id_prefix`), so a reset store or a second store on the same Reservepay installation never reuses an id. It starts with `m2-` because Reservepay treats any id starting with `pay` as its own payment id. If a long custom increment id would make the id longer than 40 characters, the order's entity id replaces it. Attempts are stored in the order payment's `additional_information` (`reservepay_attempts`), and the one that paid in `reservepay_paid_attempt`. Two tabs or a reload add attempts instead of overwriting one.
-3.  The attempt is saved before the module asks Reservepay to start the payment, so every payment Reservepay creates is on record for the reconciler. If Reservepay answers that the payment session already has a payment, for example after an earlier request timed out, the module looks it up by `external_id` and keeps it when its payment session matches.
+2.  Each payment session on the form is one attempt with its own `external_id`, `<prefix>_order_<increment id>_<n>`, for example `m2-demo-local-3f9a_order_000000047_1`. The prefix is `m2-`, up to 10 characters of the store's host, and 4 random hex characters, the same shape as the WooCommerce plugin's `wc-` prefix. It is made on the first payment and kept in Magento's `flag` table (`reservepay_external_id_prefix`) with the host it was made for, so a reset store or a second store on the same Reservepay installation never reuses an id. When the default base URL's host no longer matches, as on a staging clone of a live database, the next payment makes a new prefix. Existing attempts keep their ids. It starts with `m2-` because Reservepay treats any id starting with `pay` as its own payment id. If a long custom increment id would make the id longer than 40 characters, the order's entity id replaces it. Attempts are stored in the order payment's `additional_information` (`reservepay_attempts`), and the one that paid in `reservepay_paid_attempt`. Two tabs or a reload add attempts instead of overwriting one.
+3.  The attempt is saved before the module asks Reservepay to start the payment, so every payment Reservepay creates is on record for the reconciler. If Reservepay answers that the payment session already has a payment, for example after an earlier request timed out, the module looks it up by `external_id` and keeps it only when its `external_id` and payment session both match the attempt. Reservepay does not keep external ids unique, so the session alone would let a payment from another store with the same id pay this order.
 4.  The form callbacks, the payment page's own check, the order success page and the cron job all run the same check. It runs under a per-order lock, so repeated or simultaneous calls complete the order once. The payment form does not always report a captured payment, so once the payment has started, the page also asks the server every 15 seconds, for up to 30 minutes, and goes to the success page as soon as the order is paid.
 
 | Reservepay status | Result |
 |---|---|
-| `SUCCESSFUL`, `PARTIALLY_REFUNDED`, `REFUNDED`, `DISPUTED` | Order goes to Processing with an invoice, and the order email is sent |
+| `SUCCESSFUL` | Order goes to Processing with an invoice, and the order email is sent |
+| `PARTIALLY_REFUNDED`, `REFUNDED`, `DISPUTED` | Never pays the order. When no attempt is `SUCCESSFUL`, the order goes **On Hold** with a note naming the payment and its status, an error is logged, and the payment is recorded in `reservepay_extra_captures` |
 | `PENDING`, `AUTHORIZED` | No change. When the payment form reported success, the customer sees "We are confirming your payment" with a **View order** link: the order in their account, or **Orders and Returns** for a guest |
 | `FAILED`, `EXPIRED`, `REVERSED`, `VOIDED` | No change. When the payment form reports a failure, it reloads for the same order with "Your payment did not go through", and the next payment is a new attempt |
 | Not found, or the API is unreachable | No change, logged. An attempt with no payment id that is still not found 24 hours after it started counts as failed, because it never reached Reservepay |
@@ -104,7 +105,7 @@ The cron job `reservepay_reconcile_orders` (group `default`, every 5 minutes) ne
 | On Hold | Looks for a second captured attempt on a paid order, or for any captured attempt on an unpaid one |
 | Canceled | Looks for an attempt paid after the cancellation |
 
-A captured payment that the order cannot take never changes the order. The module does not refund or void it. It logs an error and adds a private order note, once per payment:
+A captured payment is one that is `SUCCESSFUL`, `PARTIALLY_REFUNDED`, `REFUNDED` or `DISPUTED`. One that the order cannot take never changes the order. The module does not refund or void it. It logs an error and adds a private order note, once per payment:
 
 *   Paid order: "Second Reservepay payment `pay_...` captured for this order. Refund it in the Reservepay dashboard."
 *   Cancelled order: "Reservepay payment `pay_...` was paid after this order was cancelled. Refund it in the Reservepay dashboard or reinstate the order."
@@ -146,7 +147,7 @@ Plain PHP scripts, no PHPUnit needed. Each prints one line per check and exits n
 
 ```bash
 composer test                        # the two scripts below, from the module directory
-php tests/payment-core-test.php      # StatusMap, baht to satang, external_id prefix and format
+php tests/payment-core-test.php      # StatusMap, baht to satang, external_id prefix, its host and format, FoundPayment::belongsTo
 php tests/payment-groups-test.php    # group rules against tests/fixtures/payment-groups.json, plus logos
 ```
 

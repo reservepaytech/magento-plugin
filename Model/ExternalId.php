@@ -9,8 +9,9 @@ use Magento\Store\Model\Store;
 
 /**
  * Payment attempt ids: "<prefix>_order_<increment id>_<n>", with the prefix "m2-<host>-<4 hex>", the same shape as
- * the WooCommerce plugin's "wc-..." prefix. The prefix is made once per Magento database and kept in the flag table,
- * so a reset demo store or a second store on the same Reservepay installation never reuses an earlier store's ids.
+ * the WooCommerce plugin's "wc-..." prefix. The prefix is made once per Magento database and base URL host and kept in
+ * the flag table, so a reset demo store, a second store or a staging clone on the same Reservepay installation never
+ * reuses an earlier store's ids.
  */
 class ExternalId
 {
@@ -49,10 +50,21 @@ class ExternalId
         return 'm2-' . ($host !== '' ? $host . '-' : '') . $random;
     }
 
+    /**
+     * The stored prefix while the store still runs on the host it was made for, null otherwise. A copied database on
+     * a new host (a staging clone) must not reuse the original store's ids. An older plain-string flag has no host.
+     */
+    public static function storedPrefixForHost(mixed $stored, string $host): ?string
+    {
+        $valid = is_array($stored) && is_string($stored['prefix'] ?? null) && is_string($stored['host'] ?? null);
+        return $valid && $stored['host'] === strtolower($host) ? $stored['prefix'] : null;
+    }
+
     private function prefix(): string
     {
-        $prefix = $this->flagManager->getFlagData(self::FLAG);
-        if (is_string($prefix) && $prefix !== '') {
+        $host = strtolower((string) parse_url((string) $this->scopeConfig->getValue(Store::XML_PATH_UNSECURE_BASE_URL), PHP_URL_HOST));
+        $prefix = self::storedPrefixForHost($this->flagManager->getFlagData(self::FLAG), $host);
+        if ($prefix !== null) {
             return $prefix;
         }
         // Under a lock, so two first payments at once cannot each store their own prefix.
@@ -60,11 +72,10 @@ class ExternalId
             throw new \RuntimeException('Could not lock the Reservepay external id prefix');
         }
         try {
-            $prefix = $this->flagManager->getFlagData(self::FLAG);
-            if (!is_string($prefix) || $prefix === '') {
-                $host = (string) parse_url((string) $this->scopeConfig->getValue(Store::XML_PATH_UNSECURE_BASE_URL), PHP_URL_HOST);
+            $prefix = self::storedPrefixForHost($this->flagManager->getFlagData(self::FLAG), $host);
+            if ($prefix === null) {
                 $prefix = self::makePrefix($host, bin2hex(random_bytes(2)));
-                $this->flagManager->saveFlag(self::FLAG, $prefix);
+                $this->flagManager->saveFlag(self::FLAG, ['prefix' => $prefix, 'host' => $host]);
             }
             return $prefix;
         } finally {

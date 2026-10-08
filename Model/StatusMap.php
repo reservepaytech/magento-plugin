@@ -12,18 +12,21 @@ class StatusMap
     public const FAILED = 'failed';
     public const UNKNOWN = 'unknown';
 
-    private const OUTCOMES = [
-        'SUCCESSFUL' => self::PAID,
-        'PARTIALLY_REFUNDED' => self::PAID,
-        'REFUNDED' => self::PAID,
-        'DISPUTED' => self::PAID,
-        'PENDING' => self::OPEN,
-        'AUTHORIZED' => self::OPEN,
+    // [outcome, captured]. The outcome is what the payment means for an unpaid order. Captured means money moved, so
+    // a payment on an order that cannot take it gets flagged. Refunded and disputed money was captured but must never
+    // pay an unpaid order.
+    public const STATUSES = [
+        'SUCCESSFUL' => [self::PAID, true],
+        'PARTIALLY_REFUNDED' => [self::UNKNOWN, true],
+        'REFUNDED' => [self::UNKNOWN, true],
+        'DISPUTED' => [self::UNKNOWN, true],
+        'PENDING' => [self::OPEN, false],
+        'AUTHORIZED' => [self::OPEN, false],
         // A late bank confirmation can still turn FAILED or EXPIRED into SUCCESSFUL, so failed is never final.
-        'FAILED' => self::FAILED,
-        'EXPIRED' => self::FAILED,
-        'REVERSED' => self::FAILED,
-        'VOIDED' => self::FAILED,
+        'FAILED' => [self::FAILED, false],
+        'EXPIRED' => [self::FAILED, false],
+        'REVERSED' => [self::FAILED, false],
+        'VOIDED' => [self::FAILED, false],
     ];
 
     // Highest first. The order shows failed only when every attempt failed.
@@ -31,7 +34,12 @@ class StatusMap
 
     public static function outcome(?string $status): string
     {
-        return self::OUTCOMES[strtoupper((string) $status)] ?? self::UNKNOWN;
+        return self::STATUSES[strtoupper((string) $status)][0] ?? self::UNKNOWN;
+    }
+
+    public static function captured(?string $status): bool
+    {
+        return self::STATUSES[strtoupper((string) $status)][1] ?? false;
     }
 
     /**

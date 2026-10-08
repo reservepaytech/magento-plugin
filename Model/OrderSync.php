@@ -3,6 +3,7 @@
 namespace Reservepay\Payment\Model;
 
 use Magento\Framework\App\Area;
+use Magento\Framework\Phrase;
 use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Framework\UrlInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
@@ -205,6 +206,7 @@ class OrderSync
         }
 
         $outcomes = [];
+        $unpaidCharge = null;
         foreach (array_reverse($this->attempts($payment)) as $attempt) {
             try {
                 $found = $this->findAttempt($order, $attempt);
@@ -220,7 +222,24 @@ class OrderSync
             if ($outcome === StatusMap::PAID) {
                 return $this->settle($order, $attempt, $found, $trigger);
             }
+            if ($unpaidCharge === null && StatusMap::captured($found->status)) {
+                $unpaidCharge = [$attempt, $found];
+            }
             $outcomes[] = $outcome;
+        }
+        if ($unpaidCharge !== null) {
+            [$attempt, $found] = $unpaidCharge;
+            return $this->hold(
+                $order,
+                $attempt,
+                $found,
+                'Reservepay payment is refunded or disputed and cannot pay its order, order put on hold',
+                __(
+                    'Reservepay payment %1 is %2, so it cannot pay this order. Check it in the Reservepay dashboard before releasing the hold.',
+                    $found->paymentId,
+                    $found->status
+                )
+            );
         }
         return StatusMap::aggregate($outcomes);
     }
@@ -229,28 +248,19 @@ class OrderSync
     {
         $mismatches = $this->mismatches($order, $found);
         if ($mismatches) {
-            $this->logger->error('Reservepay payment does not match its order, order put on hold', [
-                'order' => $order->getIncrementId(),
-                'external_id' => $attempt['external_id'],
-                'payment_id' => $found->paymentId,
-                'mismatches' => $mismatches,
-            ]);
-            // Its hold note already names it, so the extra capture check must not flag it again.
-            $flagged = $order->getPayment()->getAdditionalInformation(self::EXTRA_CAPTURES);
-            $flagged = is_array($flagged) ? $flagged : [];
-            $order->getPayment()->setAdditionalInformation(
-                self::EXTRA_CAPTURES,
-                array_values(array_unique([...$flagged, $found->paymentId]))
+            return $this->hold(
+                $order,
+                $attempt,
+                $found,
+                'Reservepay payment does not match its order, order put on hold',
+                __(
+                    'Reservepay payment %1 is %2 but its %3 does not match this order. Check it in the Reservepay dashboard before releasing the hold.',
+                    $found->paymentId,
+                    $found->status,
+                    implode(', ', $mismatches)
+                ),
+                ['mismatches' => $mismatches]
             );
-            $order->hold();
-            $order->addCommentToStatusHistory(__(
-                'Reservepay payment %1 is %2 but its %3 does not match this order. Check it in the Reservepay dashboard before releasing the hold.',
-                $found->paymentId,
-                $found->status,
-                implode(', ', $mismatches)
-            ));
-            $this->orderRepository->save($order);
-            return StatusMap::UNKNOWN;
         }
 
         $payment = $order->getPayment();
@@ -298,6 +308,34 @@ class OrderSync
         return StatusMap::PAID;
     }
 
+    private function hold(
+        Order $order,
+        array $attempt,
+        FoundPayment $found,
+        string $logMessage,
+        Phrase $note,
+        array $context = []
+    ): string {
+        $this->logger->error($logMessage, [
+            'order' => $order->getIncrementId(),
+            'external_id' => $attempt['external_id'],
+            'payment_id' => $found->paymentId,
+            'status' => $found->status,
+            ...$context,
+        ]);
+        // Its hold note already names it, so the extra capture check must not flag it again.
+        $flagged = $order->getPayment()->getAdditionalInformation(self::EXTRA_CAPTURES);
+        $flagged = is_array($flagged) ? $flagged : [];
+        $order->getPayment()->setAdditionalInformation(
+            self::EXTRA_CAPTURES,
+            array_values(array_unique([...$flagged, $found->paymentId]))
+        );
+        $order->hold();
+        $order->addCommentToStatusHistory($note);
+        $this->orderRepository->save($order);
+        return StatusMap::UNKNOWN;
+    }
+
     /**
      * Without a payment id, initiate may have timed out before Reservepay saw it. Once Reservepay still has no payment
      * for the attempt a day later, it never will, so the attempt fails and the order can fail or be cleaned up.
@@ -340,7 +378,7 @@ class OrderSync
                 continue;
             }
             if ($found === null
-                || StatusMap::outcome($found->status) !== StatusMap::PAID
+                || !StatusMap::captured($found->status)
                 || in_array($found->paymentId, $flagged, true)
             ) {
                 continue;
@@ -409,15 +447,12 @@ class OrderSync
             }
             throw $e;
         }
-        // Without a stored payment id the lookup went by external_id, which Reservepay does not keep unique.
-        $belongs = $attempt['payment_id'] !== null
-            ? $found->paymentId === $attempt['payment_id']
-            : $found->paymentSessionId === $attempt['session_id'];
-        if (!$belongs) {
+        if (!$found->belongsTo($attempt)) {
             $this->logger->warning('Reservepay payment does not belong to this attempt, ignored', [
                 'order' => $order->getIncrementId(),
                 'external_id' => $attempt['external_id'],
                 'payment_id' => $found->paymentId,
+                'payment_external_id' => $found->externalId,
             ]);
             return null;
         }

@@ -30,6 +30,22 @@ class FoundPayment
         return $this->paymentMethodDisplayName ?? $this->paymentMethod;
     }
 
+    /**
+     * Reservepay does not keep external ids unique, and a store clone can reuse ours, so the external id must match
+     * as well as the stored payment id, or the session when no payment id is stored yet.
+     *
+     * @param array{external_id: string, payment_id: ?string, session_id: string} $attempt
+     */
+    public function belongsTo(array $attempt): bool
+    {
+        if ($this->externalId !== $attempt['external_id']) {
+            return false;
+        }
+        return $attempt['payment_id'] !== null
+            ? $this->paymentId === $attempt['payment_id']
+            : $this->paymentSessionId === $attempt['session_id'];
+    }
+
     public static function fromResponse(mixed $body): self
     {
         if (!is_array($body)
