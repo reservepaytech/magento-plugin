@@ -31,7 +31,7 @@ class OrderSync
 {
     // Anyone holding the order token can start sessions; a cap keeps the attempt list and each sync's API calls bounded.
     private const MAX_ATTEMPTS = 10;
-    private const SESSION_ID_PATTERN = '/^pse_[A-Za-z0-9]{1,64}$/';
+    private const SESSION_ID_MAX_LENGTH = 255;
 
     public const ATTEMPTS = 'reservepay_attempts';
     public const PAID_ATTEMPT = 'reservepay_paid_attempt';
@@ -93,7 +93,7 @@ class OrderSync
 
     private function startAttemptLocked(int $orderId, string $sessionId): bool
     {
-        if (!preg_match(self::SESSION_ID_PATTERN, $sessionId)) {
+        if ($sessionId === '' || strlen($sessionId) > self::SESSION_ID_MAX_LENGTH) {
             $this->logger->warning('Reservepay payment start refused for an invalid session id', ['order_id' => $orderId]);
             return false;
         }
