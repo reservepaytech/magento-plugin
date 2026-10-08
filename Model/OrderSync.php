@@ -39,6 +39,11 @@ class OrderSync
     public const EXTRA_CAPTURES = 'reservepay_extra_captures';
     public const PAID_WITH = 'reservepay_paid_with';
     public const TRIGGER_RECONCILER = 'reconciler';
+    public const TRIGGER_WEBHOOK = 'webhook';
+    public const TRIGGER_MANUAL = 'manual';
+    // These also watch paid, cancelled and held orders for extra captures. The shopper's callbacks return at once
+    // instead, so only these pay for the extra find-payment calls.
+    private const FULL_CHECK_TRIGGERS = [self::TRIGGER_RECONCILER, self::TRIGGER_WEBHOOK, self::TRIGGER_MANUAL];
     // sales_order_payment column. Set once the order has an attempt, NULL once nothing on it can change any more, so
     // its presence is what puts an order in the reconciler. The first value sorts before every real check.
     public const LAST_CHECKED = 'reservepay_last_checked';
@@ -51,6 +56,8 @@ class OrderSync
 
     // Longer than the client timeout, so a waiting caller outlasts the holder's API call.
     private const LOCK_TIMEOUT_SECONDS = 45;
+    // Reservepay waits 10 seconds for a webhook answer. A busy order is left to whoever holds it and the reconciler.
+    private const WEBHOOK_LOCK_TIMEOUT_SECONDS = 3;
 
     public function __construct(
         private readonly Client $client,
@@ -75,21 +82,52 @@ class OrderSync
     }
 
     /**
-     * Asks Reservepay about every attempt and completes the order on the first paid one. The reconciler also watches
-     * paid, cancelled and held orders for a capture that the order cannot take.
+     * Asks Reservepay about every attempt and completes the order on the first paid one. The reconciler, webhooks and
+     * the admin check also watch paid, cancelled and held orders for a capture that the order cannot take.
      *
      * @return string a StatusMap outcome
      */
     public function sync(int $orderId, string $trigger): string
     {
+        $wait = $trigger === self::TRIGGER_WEBHOOK ? self::WEBHOOK_LOCK_TIMEOUT_SECONDS : self::LOCK_TIMEOUT_SECONDS;
         return $this->locked($orderId, function () use ($orderId, $trigger) {
             $order = $this->load($orderId);
             $outcome = $this->syncLocked($order, $trigger);
-            if ($trigger === self::TRIGGER_RECONCILER) {
+            if (in_array($trigger, self::FULL_CHECK_TRIGGERS, true)) {
                 $this->leaveReconcilerWhenStale($order);
             }
             return $outcome;
-        }) ?? StatusMap::UNKNOWN;
+        }, $wait) ?? StatusMap::UNKNOWN;
+    }
+
+    /**
+     * The admin's "Check Reservepay payment": the reconciler's check, run now, with its result noted on the order.
+     *
+     * @return Phrase|null the note, or null when the order stayed busy
+     */
+    public function checkNow(int $orderId): ?Phrase
+    {
+        return $this->locked($orderId, function () use ($orderId) {
+            $order = $this->load($orderId);
+            $flaggedBefore = $this->flagged($order->getPayment());
+            $outcome = $this->syncLocked($order, self::TRIGGER_MANUAL);
+            $this->leaveReconcilerWhenStale($order);
+            $newlyFlagged = $this->flagged($order->getPayment()) !== $flaggedBefore;
+            $note = match (true) {
+                $newlyFlagged => __('Checked with Reservepay: a captured payment needs your attention, see the other notes.'),
+                $outcome === StatusMap::PAID => __('Checked with Reservepay: the order is paid.'),
+                $outcome === StatusMap::OPEN => __('Checked with Reservepay: the payment is still pending.'),
+                $outcome === StatusMap::FAILED => __('Checked with Reservepay: no payment went through.'),
+                default => __('Checked with Reservepay: no change.'),
+            };
+            $order->addCommentToStatusHistory($note);
+            $this->orderRepository->save($order);
+            $this->logger->info('Reservepay order checked by an admin', [
+                'order' => $order->getIncrementId(),
+                'outcome' => $outcome,
+            ]);
+            return $note;
+        });
     }
 
     private function startAttemptLocked(int $orderId, string $sessionId): bool
@@ -195,8 +233,7 @@ class OrderSync
         $payment = $order->getPayment();
         $isPaid = (bool) $payment->getAdditionalInformation(self::PAID_ATTEMPT);
         if ($isPaid || in_array($order->getState(), [Order::STATE_CANCELED, Order::STATE_HOLDED], true)) {
-            // The shopper's callbacks return at once. Only the reconciler pays for the extra find-payment calls.
-            if ($trigger === self::TRIGGER_RECONCILER) {
+            if (in_array($trigger, self::FULL_CHECK_TRIGGERS, true)) {
                 $this->flagExtraCaptures($order);
             }
             return $isPaid ? StatusMap::PAID : StatusMap::UNKNOWN;
@@ -324,11 +361,9 @@ class OrderSync
             ...$context,
         ]);
         // Its hold note already names it, so the extra capture check must not flag it again.
-        $flagged = $order->getPayment()->getAdditionalInformation(self::EXTRA_CAPTURES);
-        $flagged = is_array($flagged) ? $flagged : [];
         $order->getPayment()->setAdditionalInformation(
             self::EXTRA_CAPTURES,
-            array_values(array_unique([...$flagged, $found->paymentId]))
+            array_values(array_unique([...$this->flagged($order->getPayment()), $found->paymentId]))
         );
         $order->hold();
         $order->addCommentToStatusHistory($note);
@@ -361,8 +396,7 @@ class OrderSync
     {
         $payment = $order->getPayment();
         $paidAttempt = $payment->getAdditionalInformation(self::PAID_ATTEMPT);
-        $flagged = $payment->getAdditionalInformation(self::EXTRA_CAPTURES);
-        $flagged = is_array($flagged) ? $flagged : [];
+        $flagged = $this->flagged($payment);
         $before = count($flagged);
 
         foreach ($this->attempts($payment) as $attempt) {
@@ -480,6 +514,12 @@ class OrderSync
         return is_array($attempts) ? array_values($attempts) : [];
     }
 
+    private function flagged(Payment $payment): array
+    {
+        $flagged = $payment->getAdditionalInformation(self::EXTRA_CAPTURES);
+        return is_array($flagged) ? $flagged : [];
+    }
+
     private function newAttempt(string $externalId, string $sessionId): array
     {
         return [
@@ -507,10 +547,10 @@ class OrderSync
         return $order;
     }
 
-    private function locked(int $orderId, callable $work): mixed
+    private function locked(int $orderId, callable $work, int $wait = self::LOCK_TIMEOUT_SECONDS): mixed
     {
         $name = 'reservepay_order_' . $orderId;
-        if (!$this->lockManager->lock($name, self::LOCK_TIMEOUT_SECONDS)) {
+        if (!$this->lockManager->lock($name, $wait)) {
             $this->logger->warning('Reservepay could not lock the order in time', ['order_id' => $orderId]);
             return null;
         }

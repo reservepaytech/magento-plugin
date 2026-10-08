@@ -52,6 +52,14 @@ class Config
         return trim($this->encryptor->decrypt($this->value('apikey', $storeId)));
     }
 
+    /**
+     * The webhook endpoint's verification key from the Reservepay dashboard, as shown there (Base64). '' when unset.
+     */
+    public function webhookKey(?int $storeId = null): string
+    {
+        return trim($this->encryptor->decrypt($this->value('webhook_key', $storeId)));
+    }
+
     public function apiBaseUrl(?int $storeId = null): string
     {
         return $this->value('api_base_url', $storeId) ?: self::DEFAULT_API_BASE_URL;

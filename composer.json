@@ -10,6 +10,7 @@
     "require": {
         "php": "~8.2.0||~8.3.0||~8.4.0||~8.5.0",
         "magento/framework": "^103.0.7",
+        "magento/module-backend": "^102.0.7",
         "magento/module-checkout": "^100.4.7",
         "magento/module-config": "^101.2.7",
         "magento/module-cron": "^100.4.7",
@@ -29,7 +30,8 @@
     "scripts": {
         "test": [
             "php tests/payment-core-test.php",
-            "php tests/payment-groups-test.php"
+            "php tests/payment-groups-test.php",
+            "php tests/webhook-test.php"
         ]
     }
 }

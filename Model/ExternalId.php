@@ -42,6 +42,15 @@ class ExternalId
     }
 
     /**
+     * The increment id, or the entity id for a long increment id, that an attempt id names. Either can repeat across
+     * stores, so a caller must still find the attempt on the order.
+     */
+    public static function orderRef(string $externalId): ?string
+    {
+        return preg_match('/^m2-[a-z0-9-]+_order_(.+)_[1-9]\d*$/', $externalId, $match) ? $match[1] : null;
+    }
+
+    /**
      * Starts with "m2-": Reservepay reads any id that starts with "pay" as its own payment id, not as an external_id.
      */
     public static function makePrefix(string $host, string $random): string

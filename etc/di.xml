@@ -59,6 +59,11 @@
             <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
         </arguments>
     </type>
+    <type name="Reservepay\Payment\Model\Webhook">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
+    </type>
     <type name="Reservepay\Payment\Cron\Reconcile">
         <arguments>
             <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>

@@ -9,6 +9,8 @@ This module adds **Reservepay** payments to Magento 2. After placing the order, 
 *   **Server-side confirmation**: The browser never marks an order paid. The module asks Reservepay (`merchants/find-payment`) and completes the order only when the payment is successful, its payment id matches, and it is in THB for the order's grand total.
 *   **Automatic Invoicing**: A paid order gets one invoice and a capture transaction whose id is the Reservepay payment id.
 *   **Reconciliation**: A cron job settles orders whose customer closed the tab after paying. It also flags money captured for an order that cannot take it, for a person to refund.
+*   **Webhooks**: Reservepay can tell the store about a payment as soon as it changes, so an order is settled within seconds even when the customer never comes back. See [Webhooks (recommended)](#webhooks-recommended).
+*   **Manual check**: A **Check Reservepay payment** button on the admin order view runs the same check on demand.
 *   **Retry on the same order**: When the payment form reports a failed payment, it reloads for the same order so the customer can try again. The order is not cancelled, because a failed payment can still turn successful later.
 
 ## Requirements
@@ -51,6 +53,8 @@ Tested with 2.4.7-p10 on PHP 8.2, 2.4.8-p5 on PHP 8.3, 2.4.9 on PHP 8.5 and Mage
     *   **API Key**: Enter your secret API Key.
 5.  Click **Save Config**.
 
+To receive webhooks, also set **Webhook Verification Key**. See [Webhooks (recommended)](#webhooks-recommended).
+
 Until Reservepay is enabled and all three credentials are set, checkout shows no Reservepay option and does not fetch the installation settings or the logo manifest. Orders already placed with Reservepay keep being reconciled after Reservepay is turned off, so their payments still settle. Which payment groups checkout shows is set in your Reservepay installation, not in Magento. See [Payment groups at checkout](#payment-groups-at-checkout).
 
 ## Payment groups at checkout
@@ -80,7 +84,7 @@ Each Reservepay payment group is its own Magento payment method. They all use th
 1.  Placing the order with any Reservepay group puts it in **Pending Payment** with no email sent, and the browser goes to the payment form at `reservepay/payment/form?token=...`.
 2.  Each payment session on the form is one attempt with its own `external_id`, `<prefix>_order_<increment id>_<n>`, for example `m2-demo-local-3f9a_order_000000047_1`. The prefix is `m2-`, up to 10 characters of the store's host, and 4 random hex characters, the same shape as the WooCommerce plugin's `wc-` prefix. It is made on the first payment and kept in Magento's `flag` table (`reservepay_external_id_prefix`) with the host it was made for, so a reset store or a second store on the same Reservepay installation never reuses an id. When the default base URL's host no longer matches, as on a staging clone of a live database, the next payment makes a new prefix. Existing attempts keep their ids. It starts with `m2-` because Reservepay treats any id starting with `pay` as its own payment id. If a long custom increment id would make the id longer than 40 characters, the order's entity id replaces it. Attempts are stored in the order payment's `additional_information` (`reservepay_attempts`), and the one that paid in `reservepay_paid_attempt`. Two tabs or a reload add attempts instead of overwriting one.
 3.  The attempt is saved before the module asks Reservepay to start the payment, so every payment Reservepay creates is on record for the reconciler. If Reservepay answers that the payment session already has a payment, for example after an earlier request timed out, the module looks it up by `external_id` and keeps it only when its `external_id` and payment session both match the attempt. Reservepay does not keep external ids unique, so the session alone would let a payment from another store with the same id pay this order.
-4.  The form callbacks, the payment page's own check, the order success page and the cron job all run the same check. It runs under a per-order lock, so repeated or simultaneous calls complete the order once. The payment form does not always report a captured payment, so once the payment has started, the page also asks the server every 15 seconds, for up to 30 minutes, and goes to the success page as soon as the order is paid.
+4.  The form callbacks, the payment page's own check, the order success page, webhooks, the admin's **Check Reservepay payment** button and the cron job all run the same check. It runs under a per-order lock, so repeated or simultaneous calls complete the order once. The payment form does not always report a captured payment, so once the payment has started, the page also asks the server every 15 seconds, for up to 30 minutes, and goes to the success page as soon as the order is paid.
 
 | Reservepay status | Result |
 |---|---|
@@ -124,6 +128,50 @@ bin/magento reservepay:reconcile --batch-size=10
 
 It prints the outcome per order increment id, for example `{"000000016":"paid"}`. An order that was already paid counts as `paid`, a cancelled or held one as `unknown`, and one whose check failed as `error`.
 
+## Webhooks (recommended)
+
+Webhooks let Reservepay tell the store the moment a payment changes. A webhook is only a signal to check the order now: the module never trusts the status in the webhook. It runs the reconciler's check for that order, which asks Reservepay (`merchants/find-payment`), so a paid order is completed, and a paid, cancelled or held order is checked for a second capture, exactly as the cron job would.
+
+1.  In Magento, open **Stores > Configuration > Sales > Payment Methods > Reservepay Payment** and copy the **Webhook URL**. It is `<store base URL>reservepay/webhook`, for example `https://shop.example.com/reservepay/webhook`. Use the HTTPS address customers use. Reservepay must be able to reach it from the internet.
+2.  In the Reservepay Merchant Dashboard, under **Developer Settings**, add a webhook endpoint with that URL and signature type `HMAC_SHA256`. Subscribe to `payment_completed`, `payment_authorized`, `payment_expired`, `payment_voided` and `payment_reversed`.
+3.  Copy the endpoint's verification key from the dashboard into **Webhook Verification Key** and click **Save Config**. It is stored encrypted, like the API key.
+
+Keep Magento cron running. Webhooks make orders settle sooner, but the reconciler is still the safety net for a delivery that never arrives or fails.
+
+How a delivery is handled:
+
+| Request | Answer |
+|---|---|
+| No verification key set | `503`, nothing is done. Logged at debug level |
+| `Reservepay-Signature` header missing, not `hmac_sha256=<hex>`, or not the HMAC-SHA256 of the raw body with the Base64-decoded key | `401`, nothing is done |
+| Signed, but not a JSON event with an `event_id` | `400` |
+| A payout or topup event, or any other event that is not about a payment | `200`, ignored |
+| An `event_id` already handled in the last 7 days | `200`, ignored |
+| An `external_id` that is not an attempt of a Reservepay order in this store | `200`, logged at info level, nothing changes |
+| An attempt of a Reservepay order | The order is checked with Reservepay, then `200` |
+| The check failed unexpectedly | `500`, so Reservepay delivers it again |
+
+*   **Finding the order.** The `external_id` names the order (`<prefix>_order_<increment id or entity id>_<n>`). The module looks the order up by that number, then only accepts it when one of the order's attempts has exactly that `external_id`.
+*   **Duplicates.** Reservepay can deliver an event more than once. Each handled `event_id` is remembered in Magento's cache for 7 days, so a retry is answered at once. A copy that slips through, for example after `cache:flush`, only repeats a check that changes nothing.
+*   **Timing.** Reservepay waits 10 seconds for an answer. When another request is already checking the same order, the webhook waits up to 3 seconds and then answers `200` without checking. The other request or the reconciler settles it.
+*   **No replay window.** The module does not reject old deliveries by `delivered_at`. A replayed delivery can only start a check against Reservepay, which is harmless, and a time window would only add clock skew failures.
+*   **Store views.** The key is read from the store view the webhook URL belongs to. If store views have different Reservepay credentials, give each its own endpoint and key.
+*   **Logging.** Each delivery logs one line in `var/log/reservepay.log` with the event, `event_id`, `external_id`, `payment_id` and status. The key and the signature are never logged.
+
+## Checking a payment by hand
+
+The admin order view of a Reservepay order has a **Check Reservepay payment** button. It runs the reconciler's check for that order now and adds a private order note with the result:
+
+| Note | Meaning |
+|---|---|
+| Checked with Reservepay: the order is paid. | The order was paid, now or before |
+| Checked with Reservepay: the payment is still pending. | A payment is still open |
+| Checked with Reservepay: no payment went through. | Every attempt failed so far. A late bank confirmation can still pay it |
+| Checked with Reservepay: a captured payment needs your attention, see the other notes. | The check flagged a second capture, or a capture on a cancelled or held order. Its own note names the payment |
+| Checked with Reservepay: no change. | Nothing to settle, or Reservepay could not be reached |
+
+The button needs the ACL resource **Sales > Operations > Orders > Actions > Check Reservepay payment** (`Reservepay_Payment::check_payment`). A role without it does not see the button, and the action refuses it.
+
 ## Translations
 
 `i18n/th_TH.csv` translates the five group titles and every message the module shows the customer: the payment page messages, the error when the payment page cannot open, and "Paid with". The other strings go through `__()` too, so a language pack can translate them.
@@ -135,6 +183,7 @@ The Thai wording has not been reviewed by a native speaker yet. Please have it r
 *   **API Endpoints**: The module calls `merchants/initiate-payment-flow` and `merchants/find-payment` on `https://api.reservepay.com/` with `Api-Version: 2025-04-01` and a 30 second timeout. It also calls `sdk/retrieve-installation-settings` without the API key and with a 5 second timeout, because checkout waits for it when the cache is cold.
 *   **Logging**: `var/log/reservepay.log`. The API key and the `Authorization` header are never logged.
 *   **Order token**: Right after checkout, the session that placed a Reservepay order gets a signed token for it, valid for 24 hours. The token is `<order entity id>.<expiry>.<signature>`, where the signature is an HMAC-SHA256 over the entity id, quote id and expiry, keyed with Magento's crypt key. The entity id, unlike the increment id, is unique across store views. The token in the form URL, and posted back by the form, is the only thing that decides which order a request is for. It needs no cookie, so it works on plain HTTP. A bad, expired or foreign token and an order that cannot be paid all get the same generic response.
+*   **Webhook endpoint**: `reservepay/webhook` (`Controller/Webhook/Index.php`) takes POST only and needs no form key, because the signature proves the sender. `Model/Webhook.php` checks the signature and duplicates and routes the event to the order check.
 *   **Callbacks**: The form posts the payment session to `reservepay/payment/paymentsession` and asks for a check at `reservepay/payment/sync`. A check with a bad or expired token answers `{"outcome":"refused"}`.
 *   **Caching**: The payment form block is `cacheable="false"`, so full-page cache never serves one customer's form to another.
 *   **Content Security Policy**: The payment form page enforces Magento's CSP even where the rest of the storefront only reports, and allows inline scripts only by nonce, the same as Magento's own checkout page. `etc/csp_whitelist.xml` allows `sdk.reservepay.com` and `api.reservepay.com`. When `payment/reservepay_payment/sdk_url` points at another host, the module adds that host to `script-src` and `frame-src` itself, and it adds the payment assets manifest's origin to `img-src` for the checkout logos.
@@ -149,12 +198,14 @@ Plain PHP scripts, no PHPUnit needed. Each prints one line per check and exits n
 composer test                        # the two scripts below, from the module directory
 php tests/payment-core-test.php      # StatusMap, baht to satang, external_id prefix, its host and format, FoundPayment::belongsTo
 php tests/payment-groups-test.php    # group rules against tests/fixtures/payment-groups.json, plus logos
+php tests/webhook-test.php           # webhook signature check, and external_id to order number parsing
 ```
 
-`tests/order-token-test.php` signs and verifies payment page tokens with Magento's real crypt key, so it needs a Magento install with a checkout of the module in `app/code` (Composer installs leave `tests/` out). Run it from the Magento root:
+`tests/order-token-test.php` signs and verifies payment page tokens with Magento's real crypt key, and `tests/webhook-dedupe-test.php` uses Magento's cache, so they need a Magento install with a checkout of the module in `app/code` (Composer installs leave `tests/` out). Run them from the Magento root:
 
 ```bash
 php app/code/Reservepay/Payment/tests/order-token-test.php
+php app/code/Reservepay/Payment/tests/webhook-dedupe-test.php   # webhook duplicate check in Magento's cache
 ```
 
 `tests/fixtures/payment-groups.json` is built from the payment form's own test table (`getAvailablePaymentGroups` in browser-sdk). The WooCommerce plugin has a copy at the same path. The two copies must stay identical, so change both together.
