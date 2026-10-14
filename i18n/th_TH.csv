@@ -10,3 +10,7 @@
 "Your payment did not go through. Please try again.","การชำระเงินไม่สำเร็จ กรุณาลองอีกครั้ง"
 "We could not open the payment page for this order.","ไม่สามารถเปิดหน้าชำระเงินสำหรับคำสั่งซื้อนี้ได้"
 "View order","ดูคำสั่งซื้อ"
+"Choose another payment method","เลือกวิธีชำระเงินอื่น"
+"Your payment is still being confirmed. Please wait a moment or check your order status.","กำลังยืนยันการชำระเงินของคุณ กรุณารอสักครู่หรือตรวจสอบสถานะคำสั่งซื้อ"
+"Your cart could not be restored. Please add the items again.","ไม่สามารถกู้คืนตะกร้าสินค้าได้ กรุณาเพิ่มสินค้าอีกครั้ง"
+"Shopper chose another payment method.","ผู้ซื้อเลือกวิธีชำระเงินอื่น"

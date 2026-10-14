@@ -133,5 +133,14 @@ $script = '(function(data) {' . <<<'JS'
 JS . '})(' . $block->getInitPayload() . ');';
 ?>
 <script src="<?= $escaper->escapeUrl($block->getSdkUrl()) ?>"></script>
-<div id="reservepay-payment-form"></div>
+<div class="reservepay-payment">
+    <div id="reservepay-payment-form"></div>
+    <form class="reservepay-payment-back" method="post" action="<?= $escaper->escapeUrl($block->getBackUrl()) ?>">
+        <?= $block->getBlockHtml('formkey') ?>
+        <input type="hidden" name="token" value="<?= $escaper->escapeHtmlAttr($block->getToken()) ?>">
+        <button type="submit" class="action-link">
+            <?= $escaper->escapeHtml(__('Choose another payment method')) ?>
+        </button>
+    </form>
+</div>
 <?= /* @noEscape */ $secureRenderer->renderTag('script', [], $script, false) ?>

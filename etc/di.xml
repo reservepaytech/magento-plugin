@@ -89,6 +89,11 @@
             <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
         </arguments>
     </type>
+    <type name="Reservepay\Payment\Controller\Payment\Back">
+        <arguments>
+            <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
+        </arguments>
+    </type>
 
     <type name="Magento\Csp\Model\CompositePolicyCollector">
         <arguments>

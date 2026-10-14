@@ -12,6 +12,7 @@ This module adds **Reservepay** payments to Magento 2. After placing the order, 
 *   **Webhooks**: Reservepay can tell the store about a payment as soon as it changes, so an order is settled within seconds even when the customer never comes back. See [Webhooks (recommended)](#webhooks-recommended).
 *   **Manual check**: A **Check Reservepay payment** button on the admin order view runs the same check on demand.
 *   **Retry on the same order**: When the payment form reports a failed payment, it reloads for the same order so the customer can try again. The order is not cancelled, because a failed payment can still turn successful later.
+*   **Choose another payment method**: A link under the payment form cancels the unpaid order and returns the customer to checkout's payment step with their cart restored. See [Choosing another payment method](#choosing-another-payment-method).
 
 ## Requirements
 
@@ -98,6 +99,18 @@ A successful payment that is not in THB, or whose amount does not match the orde
 
 A payment page whose token is bad or expired sends the customer to the cart with the message "We could not open the payment page for this order." The order is unchanged.
 
+### Choosing another payment method
+
+The **Choose another payment method** link under the payment form posts the order token, with the form key, to `reservepay/payment/back`. Under the same per-order lock as every other check, the module first asks Reservepay about every attempt:
+
+| Attempts | Result |
+|---|---|
+| One is `SUCCESSFUL` | The order is completed as usual and the customer goes to the success page |
+| One is still pending, or its status is unknown | No change. The payment form reloads with "Your payment is still being confirmed. Please wait a moment or check your order status." |
+| None, or every one failed | The order is cancelled with the note "Shopper chose another payment method." and the customer goes to checkout's payment step with the cart restored |
+
+The cart comes back through Magento's own `restoreQuote()`, which works only in the browser session that placed the order. When that session is gone, for example a guest who opened the payment link in another browser, the order is still cancelled and the customer lands on the cart with "Your cart could not be restored. Please add the items again." Sending the request again changes nothing. A cancelled order with attempts stays in the reconciler, so a payment that succeeds after all is flagged like any other payment on a cancelled order. A bad or expired token gets the same response as the payment page.
+
 ## Reconciliation
 
 The cron job `reservepay_reconcile_orders` (group `default`, every 5 minutes) needs Magento cron to run. Each run checks one batch of 50 Reservepay orders, least recently checked first. An order takes part from its first attempt until it is paid by its only attempt, or until its newest attempt is 72 hours old, however old the order itself is. A new attempt brings it back. The time of each check is kept in `sales_order_payment.reservepay_last_checked`, which is empty for an order that takes no part. An order whose check fails is logged and sent to the back of the queue, and the rest of the batch still runs.
@@ -174,7 +187,7 @@ The button needs the ACL resource **Sales > Operations > Orders > Actions > Chec
 
 ## Translations
 
-`i18n/th_TH.csv` translates the five group titles and every message the module shows the customer: the payment page messages, the error when the payment page cannot open, and "Paid with". The other strings go through `__()` too, so a language pack can translate them.
+`i18n/th_TH.csv` translates the five group titles and every message the module shows the customer: the payment page messages, the error when the payment page cannot open, the **Choose another payment method** link and its messages, and "Paid with". The other strings go through `__()` too, so a language pack can translate them.
 
 The Thai wording has not been reviewed by a native speaker yet. Please have it reviewed before release.
 
@@ -186,6 +199,7 @@ The Thai wording has not been reviewed by a native speaker yet. Please have it r
 *   **Webhook endpoint**: `reservepay/webhook` (`Controller/Webhook/Index.php`) takes POST only and needs no form key, because the signature proves the sender. `Model/Webhook.php` checks the signature and duplicates and routes the event to the order check.
 *   **Billing prefill**: The payment form gets the order's billing details, so the customer does not type them again. `customerEmail` is the order's email. `customerMobile` is the billing telephone, digits only; for a Thai address `+66 81 234 5678` and `+66 (0)81 234 5678` become `0812345678`. `billingAddress` holds `streetAddress1` (the first street line), `streetAddress2` (the other lines, joined with ", "), `city`, `state` (the region name), `postalCode` and `country`. Empty values are left out (`Model/BillingPrefill.php`). The payment form uses the address only when the selected method collects one. Payment form versions without these options ignore them.
 *   **Callbacks**: The form posts the payment session to `reservepay/payment/paymentsession` and asks for a check at `reservepay/payment/sync`. A check with a bad or expired token answers `{"outcome":"refused"}`.
+*   **Payment page layout**: The page uses Magento's `1column` layout. `view/frontend/web/css/form.css` centers the payment form in a box at most 480 pixels wide, with the **Choose another payment method** link under it.
 *   **Caching**: The payment form block is `cacheable="false"`, so full-page cache never serves one customer's form to another.
 *   **Content Security Policy**: The payment form page enforces Magento's CSP even where the rest of the storefront only reports, and allows inline scripts only by nonce, the same as Magento's own checkout page. `etc/csp_whitelist.xml` allows `sdk.reservepay.com` and `api.reservepay.com`. When `payment/reservepay_payment/sdk_url` points at another host, the module adds that host to `script-src` and `frame-src` itself, and it adds the payment assets manifest's origin to `img-src` for the checkout logos.
 *   **Hosts**: `payment/reservepay_payment/api_base_url`, `payment/reservepay_payment/sdk_url` and `payment/reservepay_payment/payment_assets_url` are not in the admin. Empty or unset means production (`https://api.reservepay.com/` and `https://sdk.reservepay.com/js/v1/reservepay.js`), and the manifest URL follows the SDK's origin. `bin/magento config:set` refuses paths that are not in the admin, so set them in `app/etc/env.php` or with environment config, for example `CONFIG__DEFAULT__PAYMENT__RESERVEPAY_PAYMENT__PAYMENT_ASSETS_URL`.

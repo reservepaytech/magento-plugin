@@ -25,6 +25,11 @@ class Form extends Template
         return $this->config->sdkUrl();
     }
 
+    public function getBackUrl(): string
+    {
+        return $this->getUrl('reservepay/payment/back');
+    }
+
     public function getInitPayload(): string
     {
         /** @var Order $order */

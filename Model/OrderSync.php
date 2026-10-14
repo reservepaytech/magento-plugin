@@ -41,6 +41,9 @@ class OrderSync
     public const TRIGGER_RECONCILER = 'reconciler';
     public const TRIGGER_WEBHOOK = 'webhook';
     public const TRIGGER_MANUAL = 'manual';
+    public const TRIGGER_BACK = 'back';
+    // Not a StatusMap outcome: cancelUnpaid() cancelled the order, now or on an earlier call.
+    public const CANCELLED = 'cancelled';
     // These also watch paid, cancelled and held orders for extra captures. The shopper's callbacks return at once
     // instead, so only these pay for the extra find-payment calls.
     private const FULL_CHECK_TRIGGERS = [self::TRIGGER_RECONCILER, self::TRIGGER_WEBHOOK, self::TRIGGER_MANUAL];
@@ -128,6 +131,44 @@ class OrderSync
             ]);
             return $note;
         });
+    }
+
+    /**
+     * The shopper leaves the payment page for another payment method. Checks every attempt first, so an order that
+     * was paid is completed instead, and one with a payment that may still go through is left alone.
+     *
+     * @return string StatusMap::PAID, CANCELLED, or StatusMap::OPEN or UNKNOWN when the order stays as it is
+     */
+    public function cancelUnpaid(int $orderId, Phrase $note): string
+    {
+        return $this->locked($orderId, function () use ($orderId, $note) {
+            $order = $this->load($orderId);
+            if ($order->getState() === Order::STATE_CANCELED) {
+                return self::CANCELLED;
+            }
+            $outcome = $this->syncLocked($order, self::TRIGGER_BACK);
+            if ($outcome === StatusMap::PAID) {
+                return $outcome;
+            }
+            // No attempt aggregates to unknown too, but then there is nothing that could still be paid.
+            $cancellable = $order->getState() === Order::STATE_PENDING_PAYMENT
+                && ($outcome === StatusMap::FAILED || $this->attempts($order->getPayment()) === []);
+            if (!$cancellable) {
+                return $outcome;
+            }
+
+            $order->cancel();
+            if (!$order->isCanceled()) {
+                return StatusMap::UNKNOWN;
+            }
+            $order->addCommentToStatusHistory($note);
+            $this->orderRepository->save($order);
+            $this->logger->info('Reservepay order cancelled, the shopper chose another payment method', [
+                'order' => $order->getIncrementId(),
+                'attempts' => count($this->attempts($order->getPayment())),
+            ]);
+            return self::CANCELLED;
+        }) ?? StatusMap::UNKNOWN;
     }
 
     private function startAttemptLocked(int $orderId, string $sessionId): bool
