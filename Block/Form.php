@@ -5,6 +5,7 @@ namespace Reservepay\Payment\Block;
 use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
 use Magento\Sales\Model\Order;
+use Reservepay\Payment\Model\BillingPrefill;
 use Reservepay\Payment\Model\Config;
 use Reservepay\Payment\Model\PaymentGroups;
 use Reservepay\Payment\Model\Thb;
@@ -29,6 +30,7 @@ class Form extends Template
         /** @var Order $order */
         $order = $this->getData('order');
         $storeId = (int) $order->getStoreId();
+        $billing = $order->getBillingAddress();
         return (string) json_encode([
             'merchantId' => $this->config->merchantId($storeId),
             'installationId' => $this->config->installationId($storeId),
@@ -45,6 +47,15 @@ class Form extends Template
                 ? $this->getUrl('sales/guest/form')
                 : $this->getUrl('sales/order/view', ['order_id' => $order->getEntityId()]),
             'token' => (string) $this->getData('token'),
+            'prefill' => BillingPrefill::formOptions([
+                'street' => $billing?->getStreet() ?? [],
+                'city' => $billing?->getCity(),
+                'region' => $billing?->getRegion(),
+                'postcode' => $billing?->getPostcode(),
+                'country_id' => $billing?->getCountryId(),
+                'email' => $order->getCustomerEmail(),
+                'telephone' => $billing?->getTelephone(),
+            ]),
             'messages' => [
                 'startFailed' => (string) __('We could not start the payment. Please try again.'),
                 'tryAgain' => (string) __('Try again'),

@@ -184,6 +184,7 @@ The Thai wording has not been reviewed by a native speaker yet. Please have it r
 *   **Logging**: `var/log/reservepay.log`. The API key and the `Authorization` header are never logged.
 *   **Order token**: Right after checkout, the session that placed a Reservepay order gets a signed token for it, valid for 24 hours. The token is `<order entity id>.<expiry>.<signature>`, where the signature is an HMAC-SHA256 over the entity id, quote id and expiry, keyed with Magento's crypt key. The entity id, unlike the increment id, is unique across store views. The token in the form URL, and posted back by the form, is the only thing that decides which order a request is for. It needs no cookie, so it works on plain HTTP. A bad, expired or foreign token and an order that cannot be paid all get the same generic response.
 *   **Webhook endpoint**: `reservepay/webhook` (`Controller/Webhook/Index.php`) takes POST only and needs no form key, because the signature proves the sender. `Model/Webhook.php` checks the signature and duplicates and routes the event to the order check.
+*   **Billing prefill**: The payment form gets the order's billing details, so the customer does not type them again. `customerEmail` is the order's email. `customerMobile` is the billing telephone, digits only; for a Thai address `+66 81 234 5678` and `+66 (0)81 234 5678` become `0812345678`. `billingAddress` holds `streetAddress1` (the first street line), `streetAddress2` (the other lines, joined with ", "), `city`, `state` (the region name), `postalCode` and `country`. Empty values are left out (`Model/BillingPrefill.php`). The payment form uses the address only when the selected method collects one. Payment form versions without these options ignore them.
 *   **Callbacks**: The form posts the payment session to `reservepay/payment/paymentsession` and asks for a check at `reservepay/payment/sync`. A check with a bad or expired token answers `{"outcome":"refused"}`.
 *   **Caching**: The payment form block is `cacheable="false"`, so full-page cache never serves one customer's form to another.
 *   **Content Security Policy**: The payment form page enforces Magento's CSP even where the rest of the storefront only reports, and allows inline scripts only by nonce, the same as Magento's own checkout page. `etc/csp_whitelist.xml` allows `sdk.reservepay.com` and `api.reservepay.com`. When `payment/reservepay_payment/sdk_url` points at another host, the module adds that host to `script-src` and `frame-src` itself, and it adds the payment assets manifest's origin to `img-src` for the checkout logos.
@@ -195,10 +196,11 @@ The Thai wording has not been reviewed by a native speaker yet. Please have it r
 Plain PHP scripts, no PHPUnit needed. Each prints one line per check and exits non-zero on a failure.
 
 ```bash
-composer test                        # the two scripts below, from the module directory
+composer test                        # the scripts below, from the module directory
 php tests/payment-core-test.php      # StatusMap, baht to satang, external_id prefix, its host and format, FoundPayment::belongsTo
 php tests/payment-groups-test.php    # group rules against tests/fixtures/payment-groups.json, plus logos
 php tests/webhook-test.php           # webhook signature check, and external_id to order number parsing
+php tests/billing-prefill-test.php   # billing details to payment form options, Thai mobile normalization
 ```
 
 `tests/order-token-test.php` signs and verifies payment page tokens with Magento's real crypt key, and `tests/webhook-dedupe-test.php` uses Magento's cache, so they need a Magento install with a checkout of the module in `app/code` (Composer installs leave `tests/` out). Run them from the Magento root:

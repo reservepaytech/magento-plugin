@@ -87,7 +87,8 @@ $script = '(function(data) {' . <<<'JS'
         })();
     }
 
-    var formOptions = {
+    // The order's customerEmail, customerMobile and billingAddress. SDKs without one of these options ignore it.
+    var formOptions = Object.assign({}, data.prefill, {
         containerSelector: data.containerSelector,
         amount: String(data.amount),
         currency: data.currency,
@@ -117,7 +118,7 @@ $script = '(function(data) {' . <<<'JS'
                 window.location.reload();
             }
         },
-    };
+    });
     // Opens the form on the group picked at checkout. SDKs without the option ignore it and show their chooser.
     if (data.initialPaymentGroup) {
         formOptions.initialPaymentGroup = data.initialPaymentGroup;
