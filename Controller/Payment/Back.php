@@ -41,6 +41,16 @@ class Back implements HttpPostActionInterface
             return $this->redirect('checkout/cart');
         }
 
+        // The token sits in the payment page URL, so it alone must not let anyone cancel the order. Only the
+        // browser session that placed it may; others keep the order, which Magento's pending-payment cleanup handles.
+        if (!$this->sessionOwns($order)) {
+            $this->logger->warning('Reservepay payment method change refused for a session that did not place the order');
+            $this->messageManager->addNoticeMessage(
+                __('Please choose another payment method from the browser you placed this order with.')
+            );
+            return $this->redirect('checkout/cart');
+        }
+
         $outcome = $this->orderSync->cancelUnpaid(
             (int) $order->getEntityId(),
             __('Shopper chose another payment method.')
@@ -68,12 +78,18 @@ class Back implements HttpPostActionInterface
      * Magento restores the quote of the session's last placed order only, so a session that lost the order, or placed
      * another one since, cannot get this cart back. A repeated request finds the cart already restored.
      */
+    private function sessionOwns(OrderInterface $order): bool
+    {
+        return (int) $this->checkoutSession->getLastRealOrder()->getEntityId() === (int) $order->getEntityId()
+            || (int) $this->checkoutSession->getQuoteId() === (int) $order->getQuoteId();
+    }
+
     private function restoreCart(OrderInterface $order): bool
     {
         if ((int) $this->checkoutSession->getLastRealOrder()->getEntityId() === (int) $order->getEntityId()) {
             return $this->checkoutSession->restoreQuote();
         }
-        return (int) $this->checkoutSession->getQuote()->getId() === (int) $order->getQuoteId();
+        return (int) $this->checkoutSession->getQuoteId() === (int) $order->getQuoteId();
     }
 
     /**
