@@ -7,7 +7,7 @@ use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Store\Model\ScopeInterface;
 
 /**
- * The payment/reservepay_payment settings that every payment group shares: credentials and the Reservepay API, SDK and
+ * The payment/reservepay_payment settings that every payment category shares: credentials and the Reservepay API, SDK and
  * payment assets locations. An empty location means production, because environment config such as
  * CONFIG__DEFAULT__PAYMENT__RESERVEPAY_PAYMENT__SDK_URL= stores '' and hides any default in config.xml.
  */
@@ -71,12 +71,12 @@ class Config
     }
 
     /**
-     * The SDK's logo manifest. By default it sits on the SDK's origin, like the SDK's own fetch of it.
+     * Where the SDK's checkout helper reads the logo manifest, or '' for the SDK's own default, which sits on the
+     * SDK's origin.
      */
     public function paymentAssetsUrl(?int $storeId = null): string
     {
-        return $this->value('payment_assets_url', $storeId)
-            ?: self::origin($this->sdkUrl($storeId)) . '/static/payment-assets/manifest.json';
+        return $this->value('payment_assets_url', $storeId);
     }
 
     /**
@@ -94,7 +94,7 @@ class Config
     private function value(string $field, ?int $storeId): string
     {
         return trim((string) $this->scopeConfig->getValue(
-            'payment/' . PaymentGroups::SETTINGS_CODE . '/' . $field,
+            'payment/' . PaymentCategories::SETTINGS_CODE . '/' . $field,
             ScopeInterface::SCOPE_STORE,
             $storeId
         ));

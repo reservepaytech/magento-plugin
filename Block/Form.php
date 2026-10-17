@@ -7,7 +7,8 @@ use Magento\Framework\View\Element\Template\Context;
 use Magento\Sales\Model\Order;
 use Reservepay\Payment\Model\BillingPrefill;
 use Reservepay\Payment\Model\Config;
-use Reservepay\Payment\Model\PaymentGroups;
+use Reservepay\Payment\Model\PaymentCategories;
+use Reservepay\Payment\Model\PaymentMethod;
 use Reservepay\Payment\Model\Thb;
 
 /**
@@ -42,7 +43,9 @@ class Form extends Template
             'containerSelector' => '#reservepay-payment-form',
             'amount' => Thb::satang($order->getGrandTotal()),
             'currency' => Thb::CODE,
-            'initialPaymentGroup' => PaymentGroups::groupOf($order->getPayment()?->getMethod()),
+            'initialPaymentCategory' => $order->getPayment()?->getAdditionalInformation(PaymentMethod::FALLBACK)
+                ? null
+                : PaymentCategories::categoryOf($order->getPayment()?->getMethod()),
             'paymentsessionUrl' => $this->getUrl('reservepay/payment/paymentsession'),
             'syncUrl' => $this->getUrl('reservepay/payment/sync'),
             'successUrl' => $this->getUrl('checkout/onepage/success'),

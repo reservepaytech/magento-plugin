@@ -2,19 +2,26 @@
 
 namespace Reservepay\Payment\Model;
 
+use Magento\Framework\DataObject;
 use Magento\Payment\Model\Method\AbstractMethod;
+use Magento\Quote\Api\Data\PaymentInterface;
 use Magento\Sales\Model\Order;
 use Magento\Store\Model\ScopeInterface;
 use Reservepay\Payment\Block\Info;
 
 /**
- * Without a group this is reservepay_payment, which holds the settings and is never offered at checkout. etc/di.xml
- * makes one virtual type per payment group (data "group"), and each reads every setting except its own title and sort
- * order from reservepay_payment. Observer\OfferedGroupsOnly hides the groups the installation does not offer.
+ * Without a category this is reservepay_payment, which holds the settings and is never offered at checkout. etc/di.xml
+ * makes one virtual type per payment category (data "category"), and each reads every setting except its own title and
+ * sort order from reservepay_payment.
  */
 class PaymentMethod extends AbstractMethod
 {
-    public const CODE = PaymentGroups::SETTINGS_CODE;
+    public const CODE = PaymentCategories::SETTINGS_CODE;
+    /**
+     * Set when checkout could not ask the SDK which categories to show and offered one "Pay with Reservepay" option in
+     * the card slot. The payment page then lets the SDK show its own chooser.
+     */
+    public const FALLBACK = 'reservepay_fallback';
 
     private const OWN_FIELDS = ['title', 'sort_order'];
 
@@ -24,21 +31,35 @@ class PaymentMethod extends AbstractMethod
     protected $_isInitializeNeeded = true;
     protected $_canUseInternal = false;
 
-    public function getGroup(): ?string
+    public function getCategory(): ?string
     {
-        $group = $this->getData('group');
-        return is_string($group) && isset(PaymentGroups::CODES[$group]) ? $group : null;
+        $category = $this->getData('category');
+        return is_string($category) && isset(PaymentCategories::CODES[$category]) ? $category : null;
     }
 
     public function getCode()
     {
-        $group = $this->getGroup();
-        return $group ? PaymentGroups::CODES[$group] : self::CODE;
+        $category = $this->getCategory();
+        return $category ? PaymentCategories::CODES[$category] : self::CODE;
     }
 
     public function canUseCheckout()
     {
-        return $this->getGroup() !== null;
+        return $this->getCategory() !== null;
+    }
+
+    public function assignData(DataObject $data)
+    {
+        parent::assignData($data);
+        $additional = $data->getData(PaymentInterface::KEY_ADDITIONAL_DATA);
+        $info = $this->getInfoInstance();
+        // Cleared too, so a quote paid again after a fallback attempt does not keep the old flag.
+        if (is_array($additional) && !empty($additional[self::FALLBACK])) {
+            $info->setAdditionalInformation(self::FALLBACK, true);
+        } else {
+            $info->unsAdditionalInformation(self::FALLBACK);
+        }
+        return $this;
     }
 
     public function getConfigData($field, $storeId = null)

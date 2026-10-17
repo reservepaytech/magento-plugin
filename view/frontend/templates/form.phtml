@@ -119,9 +119,10 @@ $script = '(function(data) {' . <<<'JS'
             }
         },
     });
-    // Opens the form on the group picked at checkout. SDKs without the option ignore it and show their chooser.
-    if (data.initialPaymentGroup) {
-        formOptions.initialPaymentGroup = data.initialPaymentGroup;
+    // Opens the form on the category picked at checkout. Without one, or with an SDK that lacks the option, the SDK
+    // shows its own chooser.
+    if (data.initialPaymentCategory) {
+        formOptions.initialPaymentCategory = data.initialPaymentCategory;
     }
 
     window.Reservepay.initReservepayFormUI({

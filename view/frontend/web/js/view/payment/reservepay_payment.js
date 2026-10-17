@@ -4,11 +4,11 @@ define([
 ], function (Component, rendererList) {
     'use strict';
 
-    var config = window.checkoutConfig.payment.reservepay || { groups: [] };
+    var config = window.checkoutConfig.payment.reservepay || { categories: [] };
 
-    config.groups.forEach(function (group) {
+    config.categories.forEach(function (category) {
         rendererList.push({
-            type: group.code,
+            type: category.code,
             component: 'Reservepay_Payment/js/view/payment/method-renderer/reservepay'
         });
     });

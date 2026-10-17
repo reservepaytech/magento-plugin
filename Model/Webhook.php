@@ -136,7 +136,7 @@ class Webhook
                 'p.parent_id = o.entity_id',
                 ['additional_information']
             )
-            ->where('p.method IN (?)', PaymentGroups::methodCodes())
+            ->where('p.method IN (?)', PaymentCategories::methodCodes())
             ->where($refMatches);
         foreach ($connection->fetchPairs($select) as $orderId => $info) {
             $attempts = json_decode((string) $info, true)[OrderSync::ATTEMPTS] ?? null;

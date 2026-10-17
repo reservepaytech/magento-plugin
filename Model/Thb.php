@@ -3,7 +3,7 @@
 namespace Reservepay\Payment\Model;
 
 /**
- * Reservepay only takes Thai baht for now, and its API counts in satang. Observer\OfferedGroupsOnly hides the payment
+ * Reservepay only takes Thai baht for now, and its API counts in satang. Observer\ConfiguredThbOnly hides the payment
  * methods from any quote in another currency.
  */
 class Thb

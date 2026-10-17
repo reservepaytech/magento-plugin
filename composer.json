@@ -30,7 +30,7 @@
     "scripts": {
         "test": [
             "php tests/payment-core-test.php",
-            "php tests/payment-groups-test.php",
+            "php tests/payment-categories-test.php",
             "php tests/webhook-test.php",
             "php tests/billing-prefill-test.php"
         ]

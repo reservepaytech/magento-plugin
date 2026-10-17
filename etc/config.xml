@@ -3,7 +3,7 @@
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
         <payment>
-            <!-- Holds the settings every group below reads. Never offered at checkout. -->
+            <!-- Holds the settings every category below reads. Never offered at checkout. -->
             <reservepay_payment>
                 <active>0</active>
                 <title>Reservepay</title>

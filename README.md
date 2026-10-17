@@ -4,7 +4,7 @@ This module adds **Reservepay** payments to Magento 2. After placing the order, 
 
 ## Features
 
-*   **One option per payment group**: Checkout shows one radio button for each group your Reservepay installation offers (card, installment, scan to pay, mobile banking, e-wallet), with the logos of the methods behind it. The payment form then opens on the group the customer picked.
+*   **One option per payment category**: Checkout shows one radio button for each category your Reservepay installation offers (card, installment, scan to pay, mobile banking, e-wallet), with the logos of the methods behind it. The payment form then opens on the category the customer picked.
 *   **Embedded payment form**: After placing the order, the customer goes to a payment page on your store (`reservepay/payment/form`) where the Reservepay payment form runs.
 *   **Server-side confirmation**: The browser never marks an order paid. The module asks Reservepay (`merchants/find-payment`) and completes the order only when the payment is successful, its payment id matches, and it is in THB for the order's grand total.
 *   **Automatic Invoicing**: A paid order gets one invoice and a capture transaction whose id is the Reservepay payment id.
@@ -56,13 +56,13 @@ Tested with 2.4.7-p10 on PHP 8.2, 2.4.8-p5 on PHP 8.3, 2.4.9 on PHP 8.5 and Mage
 
 To receive webhooks, also set **Webhook Verification Key**. See [Webhooks (recommended)](#webhooks-recommended).
 
-Until Reservepay is enabled and all three credentials are set, checkout shows no Reservepay option and does not fetch the installation settings or the logo manifest. Orders already placed with Reservepay keep being reconciled after Reservepay is turned off, so their payments still settle. Which payment groups checkout shows is set in your Reservepay installation, not in Magento. See [Payment groups at checkout](#payment-groups-at-checkout).
+Until Reservepay is enabled and all three credentials are set, checkout shows no Reservepay option, does not fetch the installation settings and does not load the Reservepay SDK. Orders already placed with Reservepay keep being reconciled after Reservepay is turned off, so their payments still settle. Which payment categories checkout shows is set in your Reservepay installation, not in Magento. See [Payment categories at checkout](#payment-categories-at-checkout).
 
-## Payment groups at checkout
+## Payment categories at checkout
 
-Each Reservepay payment group is its own Magento payment method. They all use the **Reservepay Payment** settings above.
+Each Reservepay payment category is its own Magento payment method. They all use the **Reservepay Payment** settings above.
 
-| Group | Payment method code | Title | Logos |
+| Category | Payment method code | Title | Logos |
 |---|---|---|---|
 | `CARD` | `reservepay_card` | Credit / debit card | The card brands in the payment assets manifest |
 | `INSTALLMENT` | `reservepay_installment` | Installment | The banks of the installation's installment method |
@@ -70,19 +70,20 @@ Each Reservepay payment group is its own Magento payment method. They all use th
 | `MOBILE_BANKING` | `reservepay_mobile_banking` | Mobile banking | The installation's mobile banking methods |
 | `EWALLET_APP` | `reservepay_ewallet_app` | E-wallet | The installation's e-wallet methods |
 
-*   **Which groups show.** The module asks Reservepay for the installation's settings (`sdk/retrieve-installation-settings`, the endpoint the payment form itself uses, with no API key) and applies the payment form's own rules. INSTALLMENT needs an installment method and a default interest bearer. CARD does not count the installment method. The answer is cached for 10 minutes. If Reservepay cannot be reached, the last answer is used. If there has never been an answer, checkout shows the card option alone, so a configured Reservepay is never missing from checkout. A group the installation does not offer is also refused if a customer tries to select it through the API.
-*   **Logos.** Each option shows up to three logos, then `+N` for the rest. They come from the payment assets manifest, by default `<SDK origin>/static/payment-assets/manifest.json`, fetched by the server, cached for 24 hours and revalidated with its ETag. The browser only loads the images. If the manifest or a logo is missing, the option shows its title alone. Only logos on the manifest's own origin are used, because that origin is the one the module adds to the page's `img-src` policy. No bank, wallet or card images ship with the module.
-*   **Titles.** Checkout shows the group title alone. The order, invoice, credit memo, their emails and PDFs, and the customer account show it as "Reservepay - <title>", for example "Reservepay - Credit / debit card". The admin order grid's Payment Method column shows the group title alone, because Magento builds it from the configured titles. The defaults are in `etc/config.xml` as `payment/reservepay_<group>/title`. Set a store view value to change one. The module ships Thai translations, see [Translations](#translations).
+*   **Which categories show.** The server asks Reservepay for the installation's settings (`sdk/retrieve-installation-settings`, the endpoint the payment form itself uses, with no API key) and embeds them in the checkout page as `window.checkoutConfig.payment.reservepay.settings`. The answer is cached for 10 minutes. If Reservepay cannot be reached, the last answer is used. Checkout then loads the Reservepay SDK from the configured SDK URL and calls `Reservepay.retrievePaymentCategoryOptions()`, so the categories and logos follow the payment form's own rules. Only the categories it returns are shown. The server offers all five whenever Reservepay is configured and the cart is in THB.
+*   **Fallback.** If the SDK does not load within 10 seconds, has no `retrievePaymentCategoryOptions()` (an SDK release older than this module), returns no category, or there are no settings yet, checkout shows one option, **Pay with Reservepay**, in the card option's place. The order keeps the `reservepay_card` method with `reservepay_fallback` set in its payment's `additional_information`, and the payment form opens on its own chooser. A configured Reservepay is never missing from checkout.
+*   **Logos.** Each option shows the logos the SDK returns, up to three, then `+N` for the rest. They come from the payment assets manifest, by default `<SDK origin>/static/payment-assets/manifest.json`. The browser fetches the manifest and loads the images. If the manifest is missing, the options show their titles alone. No bank, wallet or card images ship with the module.
+*   **Titles.** Checkout shows the category title alone. The order, invoice, credit memo, their emails and PDFs, and the customer account show it as "Reservepay - <title>", for example "Reservepay - Credit / debit card". The admin order grid's Payment Method column shows the category title alone, because Magento builds it from the configured titles. The defaults are in `etc/config.xml` as `payment/reservepay_<category>/title`. Set a store view value to change one. The module ships Thai translations, see [Translations](#translations).
 *   **Order.** The radios follow the payment form's order: card, installment, scan to pay, mobile banking, e-wallet (`sort_order` 200 to 204).
-*   **Payment form.** The form passes the order's group to the payment form as `initialPaymentGroup` and `THB` as `currency`, so the form opens on that group. A payment form version without this option ignores it and shows its own chooser.
+*   **Payment form.** The form passes the order's category to the payment form as `initialPaymentCategory` and `THB` as `currency`, so the form opens on that category. A fallback order passes no category. A payment form version without this option ignores it and shows its own chooser.
 *   **What was actually paid with.** The customer can switch methods inside the payment form. When the payment succeeds, the method Reservepay reports (`payment_method_display_name` and `payment_method` from `find-payment`, for example "Card (CARD)") is kept in `reservepay_paid_with`, shown as **Paid with** in the order's payment information, and added as an order note.
-*   **Caches.** The installation settings and the manifest stay in Magento's cache without a tag, so `bin/magento cache:flush` drops them and `cache:clean` does not. A failed fetch is retried after a minute.
+*   **Cache.** The installation settings stay in Magento's cache without a tag, so `bin/magento cache:flush` drops them and `cache:clean` does not. A failed fetch is retried after a minute.
 
 `reservepay_payment` only holds the settings. It is never offered at checkout, so no order carries it.
 
 ## How orders move
 
-1.  Placing the order with any Reservepay group puts it in **Pending Payment** with no email sent, and the browser goes to the payment form at `reservepay/payment/form?token=...`.
+1.  Placing the order with any Reservepay category puts it in **Pending Payment** with no email sent, and the browser goes to the payment form at `reservepay/payment/form?token=...`.
 2.  Each payment session on the form is one attempt with its own `external_id`, `<prefix>_order_<increment id>_<n>`, for example `m2-demo-local-3f9a_order_000000047_1`. The prefix is `m2-`, up to 10 characters of the store's host, and 4 random hex characters, the same shape as the WooCommerce plugin's `wc-` prefix. It is made on the first payment and kept in Magento's `flag` table (`reservepay_external_id_prefix`) with the host it was made for, so a reset store or a second store on the same Reservepay installation never reuses an id. When the default base URL's host no longer matches, as on a staging clone of a live database, the next payment makes a new prefix. Existing attempts keep their ids. It starts with `m2-` because Reservepay treats any id starting with `pay` as its own payment id. If a long custom increment id would make the id longer than 40 characters, the order's entity id replaces it. Attempts are stored in the order payment's `additional_information` (`reservepay_attempts`), and the one that paid in `reservepay_paid_attempt`. Two tabs or a reload add attempts instead of overwriting one.
 3.  The attempt is saved before the module asks Reservepay to start the payment, so every payment Reservepay creates is on record for the reconciler. If Reservepay answers that the payment session already has a payment, for example after an earlier request timed out, the module looks it up by `external_id` and keeps it only when its `external_id` and payment session both match the attempt. Reservepay does not keep external ids unique, so the session alone would let a payment from another store with the same id pay this order.
 4.  The form callbacks, the payment page's own check, the order success page, webhooks, the admin's **Check Reservepay payment** button and the cron job all run the same check. It runs under a per-order lock, so repeated or simultaneous calls complete the order once. The payment form does not always report a captured payment, so once the payment has started, the page also asks the server every 15 seconds, for up to 30 minutes, and goes to the success page as soon as the order is paid.
@@ -187,7 +188,7 @@ The button needs the ACL resource **Sales > Operations > Orders > Actions > Chec
 
 ## Translations
 
-`i18n/th_TH.csv` translates the five group titles and every message the module shows the customer: the payment page messages, the error when the payment page cannot open, the **Choose another payment method** link and its messages, and "Paid with". The other strings go through `__()` too, so a language pack can translate them.
+`i18n/th_TH.csv` translates the five category titles, **Pay with Reservepay**, and every message the module shows the customer: the payment page messages, the error when the payment page cannot open, the **Choose another payment method** link and its messages, and "Paid with". The other strings go through `__()` too, so a language pack can translate them.
 
 The Thai wording has not been reviewed by a native speaker yet. Please have it reviewed before release.
 
@@ -201,8 +202,8 @@ The Thai wording has not been reviewed by a native speaker yet. Please have it r
 *   **Callbacks**: The form posts the payment session to `reservepay/payment/paymentsession` and asks for a check at `reservepay/payment/sync`. A check with a bad or expired token answers `{"outcome":"refused"}`.
 *   **Payment page layout**: The page uses Magento's `1column` layout. `view/frontend/web/css/form.css` centers the payment form in a box at most 480 pixels wide, with the **Choose another payment method** link under it.
 *   **Caching**: The payment form block is `cacheable="false"`, so full-page cache never serves one customer's form to another.
-*   **Content Security Policy**: The payment form page enforces Magento's CSP even where the rest of the storefront only reports, and allows inline scripts only by nonce, the same as Magento's own checkout page. `etc/csp_whitelist.xml` allows `sdk.reservepay.com` and `api.reservepay.com`. When `payment/reservepay_payment/sdk_url` points at another host, the module adds that host to `script-src` and `frame-src` itself, and it adds the payment assets manifest's origin to `img-src` for the checkout logos.
-*   **Hosts**: `payment/reservepay_payment/api_base_url`, `payment/reservepay_payment/sdk_url` and `payment/reservepay_payment/payment_assets_url` are not in the admin. Empty or unset means production (`https://api.reservepay.com/` and `https://sdk.reservepay.com/js/v1/reservepay.js`), and the manifest URL follows the SDK's origin. `bin/magento config:set` refuses paths that are not in the admin, so set them in `app/etc/env.php` or with environment config, for example `CONFIG__DEFAULT__PAYMENT__RESERVEPAY_PAYMENT__PAYMENT_ASSETS_URL`.
+*   **Content Security Policy**: The payment form page enforces Magento's CSP even where the rest of the storefront only reports, and allows inline scripts only by nonce, the same as Magento's own checkout page. `etc/csp_whitelist.xml` allows `sdk.reservepay.com` and `api.reservepay.com`. When `payment/reservepay_payment/sdk_url` points at another host, the module adds that host to `script-src` and `frame-src` itself. For the checkout logos it adds the SDK's origin, and the `payment_assets_url` origin when set, to `connect-src` and `img-src`.
+*   **Hosts**: `payment/reservepay_payment/api_base_url`, `payment/reservepay_payment/sdk_url` and `payment/reservepay_payment/payment_assets_url` are not in the admin. Empty or unset means production (`https://api.reservepay.com/` and `https://sdk.reservepay.com/js/v1/reservepay.js`), and an empty manifest URL leaves the SDK's own default. A set `payment_assets_url` is passed to the SDK's checkout helper as `paymentAssetsUrl`. `bin/magento config:set` refuses paths that are not in the admin, so set them in `app/etc/env.php` or with environment config, for example `CONFIG__DEFAULT__PAYMENT__RESERVEPAY_PAYMENT__PAYMENT_ASSETS_URL`.
 *   **Packaging**: `.gitattributes` marks `tests/`, `.gitignore` and `.gitattributes` `export-ignore`, so `composer archive` and GitHub release archives hold only what the store runs.
 
 ## Tests
@@ -212,7 +213,7 @@ Plain PHP scripts, no PHPUnit needed. Each prints one line per check and exits n
 ```bash
 composer test                        # the scripts below, from the module directory
 php tests/payment-core-test.php      # StatusMap, baht to satang, external_id prefix, its host and format, FoundPayment::belongsTo
-php tests/payment-groups-test.php    # group rules against tests/fixtures/payment-groups.json, plus logos
+php tests/payment-categories-test.php  # category to method code mapping
 php tests/webhook-test.php           # webhook signature check, and external_id to order number parsing
 php tests/billing-prefill-test.php   # billing details to payment form options, Thai mobile normalization
 ```
@@ -223,5 +224,3 @@ php tests/billing-prefill-test.php   # billing details to payment form options, 
 php app/code/Reservepay/Payment/tests/order-token-test.php
 php app/code/Reservepay/Payment/tests/webhook-dedupe-test.php   # webhook duplicate check in Magento's cache
 ```
-
-`tests/fixtures/payment-groups.json` is built from the payment form's own test table (`getAvailablePaymentGroups` in browser-sdk). The WooCommerce plugin has a copy at the same path. The two copies must stay identical, so change both together.
