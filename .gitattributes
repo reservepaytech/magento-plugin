@@ -1,0 +1,4 @@
+# Kept out of `composer archive` and GitHub release archives: the module needs none of these at runtime.
+/tests export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore

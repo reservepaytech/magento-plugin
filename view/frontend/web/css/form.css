@@ -1,0 +1,31 @@
+.reservepay-payment {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.reservepay-payment-back {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.reservepay-payment-back .action-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: inherit;
+    font-weight: 400;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.reservepay-payment-back .action-link:hover,
+.reservepay-payment-back .action-link:focus,
+.reservepay-payment-back .action-link:active {
+    box-shadow: none;
+    color: inherit;
+    background: none;
+    border: 0;
+    text-decoration: none;
+}

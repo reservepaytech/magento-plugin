@@ -1,0 +1,10 @@
+{
+    "sales_order_payment": {
+        "column": {
+            "reservepay_last_checked": true
+        },
+        "index": {
+            "SALES_ORDER_PAYMENT_RESERVEPAY_LAST_CHECKED": true
+        }
+    }
+}

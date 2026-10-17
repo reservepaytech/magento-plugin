@@ -1,0 +1,19 @@
+<?php
+/** @var \Reservepay\Payment\Block\Info $block */
+/** @var \Magento\Framework\Escaper $escaper */
+$specificInfo = $block->getSpecificInformation();
+?>
+<?= $escaper->escapeHtml($block->getTitle()) ?>
+
+<?php if ($specificInfo): ?>
+    <table class="data-table admin__table-secondary">
+    <?php foreach ($specificInfo as $label => $value): ?>
+        <tr>
+            <th><?= $escaper->escapeHtml($label) ?>:</th>
+            <td><?= /* @noEscape */ nl2br($escaper->escapeHtml(implode("\n", $block->getValueAsArray($value, true)))) ?></td>
+        </tr>
+    <?php endforeach; ?>
+    </table>
+<?php endif; ?>
+
+<?= $block->getChildHtml() ?>
