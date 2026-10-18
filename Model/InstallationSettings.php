@@ -12,6 +12,7 @@ use Reservepay\Payment\Model\Api\Client;
 class InstallationSettings
 {
     private const TTL_SECONDS = 600;
+    private const CACHE_NAME = 'installation_settings';
 
     private array $loaded = [];
 
@@ -27,22 +28,55 @@ class InstallationSettings
      */
     public function forStore(int $storeId): ?array
     {
-        return $this->loaded[$storeId] ??= $this->load($storeId);
+        return $this->loaded[$storeId] ??= $this->remoteCache->get(
+            self::CACHE_NAME,
+            $this->key($storeId),
+            self::TTL_SECONDS,
+            fn () => $this->fetch($storeId)
+        );
     }
 
-    private function load(int $storeId): ?array
+    /**
+     * Fetches now and replaces the cached settings. Throws when Reservepay cannot answer, and the cache keeps what it
+     * had.
+     */
+    public function refresh(int $storeId): array
     {
-        $merchantId = $this->config->merchantId($storeId);
-        $installationId = $this->config->installationId($storeId);
-        $key = implode('|', [$this->config->apiBaseUrl($storeId), $merchantId, $installationId]);
-        return $this->remoteCache->get('installation_settings', $key, self::TTL_SECONDS, function () use ($storeId, $merchantId, $installationId) {
-            $response = $this->client->retrieveInstallationSettings($storeId, $merchantId, $installationId);
-            $methods = array_map(fn ($method) => [
-                'name' => $method['name'] ?? null,
-                'category' => $method['category'] ?? null,
-                'banks' => array_map(fn ($bank) => ['name' => $bank['name'] ?? null], is_array($method['banks'] ?? null) ? $method['banks'] : []),
-            ], array_filter($response['payment_methods'], 'is_array'));
-            return ['interest_bearer' => $response['interest_bearer'] ?? null, 'payment_methods' => array_values($methods)];
-        });
+        return $this->loaded[$storeId] = $this->remoteCache->refresh(
+            self::CACHE_NAME,
+            $this->key($storeId),
+            self::TTL_SECONDS,
+            fn () => $this->fetch($storeId)
+        );
+    }
+
+    public function forget(int $storeId): void
+    {
+        unset($this->loaded[$storeId]);
+        $this->remoteCache->forget(self::CACHE_NAME, $this->key($storeId));
+    }
+
+    private function key(int $storeId): string
+    {
+        return implode('|', [
+            $this->config->apiBaseUrl($storeId),
+            $this->config->merchantId($storeId),
+            $this->config->installationId($storeId),
+        ]);
+    }
+
+    private function fetch(int $storeId): array
+    {
+        $response = $this->client->retrieveInstallationSettings(
+            $storeId,
+            $this->config->merchantId($storeId),
+            $this->config->installationId($storeId)
+        );
+        $methods = array_map(fn ($method) => [
+            'name' => $method['name'] ?? null,
+            'category' => $method['category'] ?? null,
+            'banks' => array_map(fn ($bank) => ['name' => $bank['name'] ?? null], is_array($method['banks'] ?? null) ? $method['banks'] : []),
+        ], array_filter($response['payment_methods'], 'is_array'));
+        return ['interest_bearer' => $response['interest_bearer'] ?? null, 'payment_methods' => array_values($methods)];
     }
 }
