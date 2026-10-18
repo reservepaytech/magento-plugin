@@ -2,9 +2,7 @@
 
 namespace Reservepay\Payment\Model;
 
-use Magento\Framework\DataObject;
 use Magento\Payment\Model\Method\AbstractMethod;
-use Magento\Quote\Api\Data\PaymentInterface;
 use Magento\Sales\Model\Order;
 use Magento\Store\Model\ScopeInterface;
 use Reservepay\Payment\Block\Info;
@@ -17,11 +15,6 @@ use Reservepay\Payment\Block\Info;
 class PaymentMethod extends AbstractMethod
 {
     public const CODE = PaymentCategories::SETTINGS_CODE;
-    /**
-     * Set when checkout could not ask the SDK which categories to show and offered one "Pay with Reservepay" option in
-     * the card slot. The payment page then lets the SDK show its own chooser.
-     */
-    public const FALLBACK = 'reservepay_fallback';
 
     private const OWN_FIELDS = ['title', 'sort_order'];
 
@@ -46,20 +39,6 @@ class PaymentMethod extends AbstractMethod
     public function canUseCheckout()
     {
         return $this->getCategory() !== null;
-    }
-
-    public function assignData(DataObject $data)
-    {
-        parent::assignData($data);
-        $additional = $data->getData(PaymentInterface::KEY_ADDITIONAL_DATA);
-        $info = $this->getInfoInstance();
-        // Cleared too, so a quote paid again after a fallback attempt does not keep the old flag.
-        if (is_array($additional) && !empty($additional[self::FALLBACK])) {
-            $info->setAdditionalInformation(self::FALLBACK, true);
-        } else {
-            $info->unsAdditionalInformation(self::FALLBACK);
-        }
-        return $this;
     }
 
     public function getConfigData($field, $storeId = null)

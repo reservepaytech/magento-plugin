@@ -1,16 +1,13 @@
 define([
     'jquery',
     'ko',
-    'mage/translate',
     'Magento_Checkout/js/view/payment/default',
     'Magento_Checkout/js/action/select-payment-method',
     'Magento_Checkout/js/checkout-data',
     'Reservepay_Payment/js/model/payment-category-options',
     'mage/url'
-], function ($, ko, $t, Component, selectPaymentMethodAction, checkoutData, categoryOptions, url) {
+], function ($, ko, Component, selectPaymentMethodAction, checkoutData, categoryOptions, url) {
     'use strict';
-
-    var FALLBACK_CATEGORY = 'CARD';
 
     return Component.extend({
         defaults: {
@@ -43,20 +40,7 @@ define([
         },
 
         isVisibleIn: function (state) {
-            if (state === null) {
-                return false;
-            }
-            return state.fallback ? this.category === FALLBACK_CATEGORY : !!state.byCategory[this.category];
-        },
-
-        isFallback: function () {
-            var state = categoryOptions();
-
-            return state !== null && state.fallback && this.category === FALLBACK_CATEGORY;
-        },
-
-        getTitle: function () {
-            return this.isFallback() ? $t('Pay with Reservepay') : this._super();
+            return state !== null && !!state.byCategory[this.category];
         },
 
         /**
@@ -66,15 +50,6 @@ define([
             var state = categoryOptions();
 
             return (state && state.byCategory[this.category]) || { logos: [], more: 0 };
-        },
-
-        getData: function () {
-            var data = this._super();
-
-            if (this.isFallback()) {
-                data['additional_data'] = { 'reservepay_fallback': '1' };
-            }
-            return data;
         },
 
         afterPlaceOrder: function () {

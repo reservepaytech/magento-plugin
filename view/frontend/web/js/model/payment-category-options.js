@@ -2,25 +2,52 @@ define(['ko'], function (ko) {
     'use strict';
 
     var TIMEOUT_MS = 10000;
+    var CATEGORIES = ['CARD', 'INSTALLMENT', 'SCAN_TO_PAY', 'MOBILE_BANKING', 'EWALLET_APP'];
     var config = window.checkoutConfig.payment.reservepay || { categories: [] };
 
     /**
-     * null while the SDK is asked. Then either the SDK's options by category, or fallback: true when the SDK could not
-     * answer, and checkout offers one "Pay with Reservepay" option in the card slot instead.
+     * null while the SDK is asked, then the options to show by category.
      *
-     * @type {ko.Observable<null|{fallback: boolean, byCategory: Object<string, {logos: Array, more: number}>}>}
+     * @type {ko.Observable<null|{byCategory: Object<string, {logos: Array, more: number}>}>}
      */
     var state = ko.observable(null);
+
+    // Mirrors getAvailablePaymentCategories in @reservepaytech/browser-sdk-core; used only when the SDK can't answer.
+    function availableCategories(settings) {
+        var methods = settings.payment_methods || [];
+        var upper = function (value) {
+            return typeof value === 'string' ? value.toUpperCase() : value;
+        };
+
+        return CATEGORIES.filter(function (category) {
+            if (category === 'INSTALLMENT') {
+                return !!settings.interest_bearer && methods.some(function (method) {
+                    return upper(method.name) === 'INSTALLMENT';
+                });
+            }
+            return methods.some(function (method) {
+                return upper(method.category) === category &&
+                    !(category === 'CARD' && upper(method.name) === 'INSTALLMENT');
+            });
+        });
+    }
 
     function settle(options) {
         if (state() !== null) {
             return;
         }
+        if (!options || !options.length) {
+            var categories = config.settings ? availableCategories(config.settings) : [];
+
+            options = (categories.length ? categories : ['CARD']).map(function (category) {
+                return { category: category, logos: [], more: 0 };
+            });
+        }
         var byCategory = {};
-        (options || []).forEach(function (option) {
+        options.forEach(function (option) {
             byCategory[option.category] = option;
         });
-        state({ fallback: !options || !options.length, byCategory: byCategory });
+        state({ byCategory: byCategory });
     }
 
     function ask() {
