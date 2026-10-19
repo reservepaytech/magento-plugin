@@ -100,4 +100,10 @@ check('the latest attempt is the candidate', OrderSync::resumeCandidate([$first,
 check('a latest attempt Reservepay never took is not resumed', OrderSync::resumeCandidate([$first, $second, $unstarted]), null);
 check('an attempt without a session is not resumed', OrderSync::resumeCandidate([['payment_id' => 'pay_1']]), null);
 
+check('no attempts, the shopper may cancel', OrderSync::shopperMayCancel('unknown', false), true);
+check('every attempt failed, the shopper may cancel', OrderSync::shopperMayCancel('failed', true), true);
+check('an open payment does not stop the shopper cancelling', OrderSync::shopperMayCancel('open', true), true);
+check('an unknown answer keeps the order', OrderSync::shopperMayCancel('unknown', true), false);
+check('a paid order is never cancelled', OrderSync::shopperMayCancel('paid', true), false);
+
 done();

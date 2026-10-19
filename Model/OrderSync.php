@@ -85,6 +85,17 @@ class OrderSync
     }
 
     /**
+     * Whether the shopper who placed an unpaid order may cancel it to pay another way. An open payment does not stop
+     * them: the order stays watched, so a capture that arrives later is flagged for a refund. Only an answer that
+     * might hide a payment (unknown, for example when Reservepay could not be reached) keeps the order. With no
+     * attempt, nothing can be paid.
+     */
+    public static function shopperMayCancel(string $outcome, bool $hasAttempts): bool
+    {
+        return !$hasAttempts || in_array($outcome, [StatusMap::FAILED, StatusMap::OPEN], true);
+    }
+
+    /**
      * The payment session the payment page reopens: the latest attempt's, while its payment is open and unexpired, or
      * already paid. Otherwise null, so the form starts a new session instead of showing a dead one.
      */
@@ -179,10 +190,8 @@ class OrderSync
             if ($outcome === StatusMap::PAID) {
                 return $outcome;
             }
-            // No attempt aggregates to unknown too, but then there is nothing that could still be paid.
-            $cancellable = $order->getState() === Order::STATE_PENDING_PAYMENT
-                && ($outcome === StatusMap::FAILED || $this->attempts($order->getPayment()) === []);
-            if (!$cancellable) {
+            $hasAttempts = $this->attempts($order->getPayment()) !== [];
+            if ($order->getState() !== Order::STATE_PENDING_PAYMENT || !self::shopperMayCancel($outcome, $hasAttempts)) {
                 return $outcome;
             }
 
@@ -191,10 +200,16 @@ class OrderSync
                 return StatusMap::UNKNOWN;
             }
             $order->addCommentToStatusHistory($note);
+            if ($outcome === StatusMap::OPEN) {
+                $order->addCommentToStatusHistory(__(
+                    'A Reservepay payment session was still open when the shopper left. If it is paid later, this order is flagged for a refund.'
+                ));
+            }
             $this->orderRepository->save($order);
             $this->logger->info('Reservepay order cancelled, the shopper chose another payment method', [
                 'order' => $order->getIncrementId(),
                 'attempts' => count($this->attempts($order->getPayment())),
+                'open_payment' => $outcome === StatusMap::OPEN,
             ]);
             return self::CANCELLED;
         }) ?? StatusMap::UNKNOWN;

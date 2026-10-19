@@ -103,7 +103,8 @@ The **Choose another payment method** link under the payment form posts the orde
 | Attempts | Result |
 |---|---|
 | One is `SUCCESSFUL` | The order is completed as usual and the customer goes to the success page |
-| One is still pending, or its status is unknown | No change. The payment form reloads with "Your payment is still being confirmed. Please wait a moment or check your order status." |
+| Its status is unknown, for example because Reservepay could not be reached | No change. The payment form reloads with "Your payment is still being confirmed. Please wait a moment or check your order status." |
+| One is still open (`PENDING` or `AUTHORIZED`), for example a QR code that has not been paid | The order is cancelled as below, with a second note: "A Reservepay payment session was still open when the shopper left. If it is paid later, this order is flagged for a refund." |
 | None, or every one failed | The order is cancelled with the note "Shopper chose another payment method." and the customer goes to checkout's payment step with the cart restored |
 
 Only the browser session that placed the order can use it, because the token alone is in the payment page URL and could be shared or logged. Any other session (for example a guest who opened the payment link in another browser) is sent to the cart with "Please choose another payment method from the browser you placed this order with." and the order is left for Magento's own pending-payment cleanup. The cart comes back through Magento's `restoreQuote()`; if that fails, the order is still cancelled and the customer lands on the cart with "Your cart could not be restored. Please add the items again." Sending the request again changes nothing. A cancelled order with attempts stays in the reconciler, so a payment that succeeds after all is flagged like any other payment on a cancelled order. A bad or expired token gets the same response as the payment page.
