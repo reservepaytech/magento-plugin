@@ -46,6 +46,10 @@ class RefreshPaymentMethods extends Field
             'settings' => $settings,
             'updated' => $settings === null ? null : $this->updated($this->installationSettings->fetchedAt($storeId)),
             'init' => $settings === null ? null : [
+                'categories' => array_map(
+                    fn (string $category) => ['category' => $category],
+                    array_keys(PaymentCategories::CODES)
+                ),
                 'settings' => $settings,
                 'sdkUrl' => $this->config->sdkUrl($storeId),
                 'paymentAssetsUrl' => $this->config->paymentAssetsUrl($storeId) ?: null,

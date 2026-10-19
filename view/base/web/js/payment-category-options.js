@@ -2,17 +2,16 @@ define([], function () {
     'use strict';
 
     var TIMEOUT_MS = 10000;
-    var CATEGORIES = ['CARD', 'INSTALLMENT', 'SCAN_TO_PAY', 'MOBILE_BANKING', 'EWALLET_APP'];
     var sdkLoaded = null;
 
     // Mirrors getAvailablePaymentCategories in @reservepaytech/browser-sdk-core; used only when the SDK can't answer.
-    function availableCategories(settings) {
+    function availableCategories(settings, categories) {
         var methods = settings.payment_methods || [];
         var upper = function (value) {
             return typeof value === 'string' ? value.toUpperCase() : value;
         };
 
-        return CATEGORIES.filter(function (category) {
+        return categories.filter(function (category) {
             if (category === 'INSTALLMENT') {
                 return !!settings.interest_bearer && methods.some(function (method) {
                     return upper(method.name) === 'INSTALLMENT';
@@ -25,12 +24,16 @@ define([], function () {
         });
     }
 
-    function fallback(settings) {
-        var categories = settings ? availableCategories(settings) : [];
+    // The first category alone when nothing is known, so a configured store never shows zero options.
+    function fallback(config) {
+        var all = config.categories.map(function (entry) {
+            return entry.category;
+        });
+        var categories = config.settings ? availableCategories(config.settings, all) : [];
 
         return {
             fromSdk: false,
-            options: (categories.length ? categories : ['CARD']).map(function (category) {
+            options: (categories.length ? categories : all.slice(0, 1)).map(function (category) {
                 return { category: category, logos: [], more: 0 };
             })
         };
@@ -73,19 +76,20 @@ define([], function () {
 
     /**
      * The categories checkout offers for these installation settings, with the SDK's logos, or the local rule's
-     * categories without logos when the SDK can't answer. No settings: CARD alone, without loading the SDK.
+     * categories without logos when the SDK can't answer. No settings: the first category alone, without loading the SDK.
      *
-     * @param {{settings: ?Object, sdkUrl: string, paymentAssetsUrl: ?string}} config
+     * @param {{categories: Array<{category: string}>, settings: ?Object, sdkUrl: string, paymentAssetsUrl: ?string}} config
+     *     categories: Model\PaymentCategories::CODES, in its order, default first
      * @param {number} [maxLogos] logos per category, the SDK's default (3, then "more") when left out
      * @returns {Promise<{fromSdk: boolean, options: Array<{category: string, logos: Array, more: number}>}>}
      */
     return function (config, maxLogos) {
         if (!config.settings) {
-            return Promise.resolve(fallback(null));
+            return Promise.resolve(fallback(config));
         }
         return new Promise(function (resolve) {
             var settle = function (options) {
-                resolve(options && options.length ? { fromSdk: true, options: options } : fallback(config.settings));
+                resolve(options && options.length ? { fromSdk: true, options: options } : fallback(config));
             };
 
             setTimeout(settle, TIMEOUT_MS);

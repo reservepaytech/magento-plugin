@@ -9,7 +9,7 @@ namespace Reservepay\Payment\Model;
  */
 class PaymentCategories
 {
-    /** Category => payment method code, in the SDK chooser's order. */
+    /** Category => payment method code, in the SDK chooser's order. CARD leads: the checkout JS falls back to the first. */
     public const CODES = [
         'CARD' => 'reservepay_card',
         'INSTALLMENT' => 'reservepay_installment',
