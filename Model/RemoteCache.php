@@ -33,6 +33,7 @@ class RemoteCache
         try {
             $entry['value'] = $fetch();
             $entry['fresh_until'] = time() + $ttl;
+            $entry['fetched_at'] = time();
         } catch (\Throwable $e) {
             $entry['fresh_until'] = time() + self::RETRY_AFTER_SECONDS;
         }
@@ -48,8 +49,17 @@ class RemoteCache
     public function refresh(string $name, string $key, int $ttl, callable $fetch): array
     {
         $value = $fetch();
-        $this->save($this->id($name, $key), ['value' => $value, 'fresh_until' => time() + $ttl]);
+        $this->save($this->id($name, $key), ['value' => $value, 'fresh_until' => time() + $ttl, 'fetched_at' => time()]);
         return $value;
+    }
+
+    /**
+     * @return int|null when the value was last fetched, null when never or before this was recorded
+     */
+    public function fetchedAt(string $name, string $key): ?int
+    {
+        $entry = json_decode((string) $this->cache->load($this->id($name, $key)), true);
+        return is_int($entry['fetched_at'] ?? null) ? $entry['fetched_at'] : null;
     }
 
     public function forget(string $name, string $key): void

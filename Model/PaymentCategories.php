@@ -4,7 +4,7 @@ namespace Reservepay\Payment\Model;
 
 /**
  * The Reservepay payment categories, one checkout payment method each. Which of them checkout shows is decided in the
- * browser by the Reservepay SDK from the installation settings (view/frontend/web/js/model/payment-category-options.js).
+ * browser by the Reservepay SDK from the installation settings (view/base/web/js/payment-category-options.js).
  * Plain PHP, so the test runs without Magento.
  */
 class PaymentCategories

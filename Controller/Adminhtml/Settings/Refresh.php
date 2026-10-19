@@ -5,7 +5,7 @@ namespace Reservepay\Payment\Controller\Adminhtml\Settings;
 use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
 use Magento\Framework\App\Action\HttpPostActionInterface;
-use Magento\Store\Model\StoreManagerInterface;
+use Reservepay\Payment\Model\AdminScope;
 use Reservepay\Payment\Model\Config;
 use Reservepay\Payment\Model\InstallationSettings;
 
@@ -21,26 +21,18 @@ class Refresh extends Action implements HttpPostActionInterface
         Context $context,
         private readonly InstallationSettings $installationSettings,
         private readonly Config $config,
-        private readonly StoreManagerInterface $storeManager
+        private readonly AdminScope $adminScope
     ) {
         parent::__construct($context);
     }
 
     public function execute()
     {
-        $storeParam = $this->getRequest()->getParam('store');
-        $websiteParam = $this->getRequest()->getParam('website');
-        $redirect = $this->resultRedirectFactory->create()->setPath('adminhtml/system_config/edit', array_filter([
-            'section' => 'payment',
-            'website' => $websiteParam,
-            'store' => $storeParam,
-        ], fn ($value) => $value !== null && $value !== ''));
-        $store = match (true) {
-            $storeParam !== null => $this->storeManager->getStore($storeParam),
-            $websiteParam !== null => $this->storeManager->getWebsite($websiteParam)->getDefaultStore(),
-            default => $this->storeManager->getDefaultStoreView(),
-        };
-        $storeId = (int) $store->getId();
+        $redirect = $this->resultRedirectFactory->create()->setPath(
+            'adminhtml/system_config/edit',
+            ['section' => 'payment'] + $this->adminScope->params($this->getRequest())
+        );
+        $storeId = $this->adminScope->storeId($this->getRequest());
 
         if (!$this->config->isConfigured($storeId)) {
             $this->messageManager->addErrorMessage(

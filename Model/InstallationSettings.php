@@ -50,6 +50,11 @@ class InstallationSettings
         );
     }
 
+    public function fetchedAt(int $storeId): ?int
+    {
+        return $this->remoteCache->fetchedAt(self::CACHE_NAME, $this->key($storeId));
+    }
+
     public function forget(int $storeId): void
     {
         unset($this->loaded[$storeId]);
