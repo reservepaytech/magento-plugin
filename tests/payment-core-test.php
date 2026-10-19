@@ -83,12 +83,17 @@ check('belongs: stored payment id, other external id', $found(['external_id' => 
 check('belongs: stored payment id differs', $found(['payment_id' => 'pay_2'])->belongsTo($stored), false);
 
 $payment = fn (string $status, ?int $expiresAt = null) => new FoundPayment('pay_1', 'x', 'pse_1', $status, 100, 'THB', null, null, $expiresAt);
-foreach (['PENDING' => true, 'AUTHORIZED' => true, 'SUCCESSFUL' => true, 'FAILED' => false, 'EXPIRED' => false, 'VOIDED' => false, 'REFUNDED' => false, 'SOMETHING_NEW' => false] as $status => $resumes) {
+foreach (['PENDING' => true, 'AUTHORIZED' => true, 'SUCCESSFUL' => false, 'FAILED' => false, 'EXPIRED' => false, 'VOIDED' => false, 'REFUNDED' => false, 'SOMETHING_NEW' => false] as $status => $resumes) {
     check("$status payment with no expiry resumable", $payment($status)->resumable(1000), $resumes);
 }
 check('open payment before its expiry is resumable', $payment('PENDING', 1001)->resumable(1000), true);
 check('open payment at its expiry is not resumable', $payment('PENDING', 1000)->resumable(1000), false);
-check('paid payment past its expiry is still resumable', $payment('SUCCESSFUL', 900)->resumable(1000), true);
+$method = fn (?string $code, ?string $name) => (new FoundPayment('pay_1', 'x', 'pse_1', 'SUCCESSFUL', 100, 'THB', $code, $name))->paidWith();
+check('paid with: display name only', $method('PROMPTPAY', 'PromptPay'), 'PromptPay');
+check('paid with: code when there is no display name', $method('CARD', null), 'CARD');
+check('paid with: nothing reported', $method(null, null), null);
+check('paid with: display name from find-payment', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'SUCCESSFUL', 'amount' => 1, 'currency' => 'THB', 'payment_method' => 'CARD', 'payment_method_display_name' => 'Card'])->paidWith(), 'Card');
+check('paid with: empty display name falls back to the code', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'SUCCESSFUL', 'amount' => 1, 'currency' => 'THB', 'payment_method' => 'CARD', 'payment_method_display_name' => ''])->paidWith(), 'CARD');
 check('find-payment expires_at is read', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'PENDING', 'amount' => 1, 'currency' => 'THB', 'expires_at' => 1234])->expiresAt, 1234);
 check('find-payment without expires_at', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'PENDING', 'amount' => 1, 'currency' => 'THB'])->expiresAt, null);
 
@@ -99,6 +104,13 @@ check('no attempts, nothing to resume', OrderSync::resumeCandidate([]), null);
 check('the latest attempt is the candidate', OrderSync::resumeCandidate([$first, $second]), $second);
 check('a latest attempt Reservepay never took is not resumed', OrderSync::resumeCandidate([$first, $second, $unstarted]), null);
 check('an attempt without a session is not resumed', OrderSync::resumeCandidate([['payment_id' => 'pay_1']]), null);
+
+check('page start: open payment reopens its session', OrderSync::pageStart($second, $payment('PENDING', 1001), 1000), ['paymentSessionId' => 'pse_2', 'paid' => false]);
+check('page start: paid payment confirms instead of reopening', OrderSync::pageStart($second, $payment('SUCCESSFUL', 900), 1000), ['paymentSessionId' => null, 'paid' => true]);
+check('page start: expired payment starts a new session', OrderSync::pageStart($second, $payment('PENDING', 1000), 1000), ['paymentSessionId' => null, 'paid' => false]);
+check('page start: failed payment starts a new session', OrderSync::pageStart($second, $payment('FAILED'), 1000), ['paymentSessionId' => null, 'paid' => false]);
+check('page start: no answer from Reservepay starts a new session', OrderSync::pageStart($second, null, 1000), ['paymentSessionId' => null, 'paid' => false]);
+check('page start: no attempt starts a new session', OrderSync::pageStart(null, null, 1000), ['paymentSessionId' => null, 'paid' => false]);
 
 check('no attempts, the shopper may cancel', OrderSync::shopperMayCancel('unknown', false), true);
 check('every attempt failed, the shopper may cancel', OrderSync::shopperMayCancel('failed', true), true);

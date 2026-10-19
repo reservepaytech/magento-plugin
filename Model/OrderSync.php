@@ -26,7 +26,7 @@ use Reservepay\Payment\Model\Api\FoundPayment;
  *   reservepay_attempts:       [{external_id: "m2-<host>-<hex>_order_<increment id>_<n>", payment_id: "pay_..."|null, session_id, created_at}]
  *   reservepay_paid_attempt:   external_id of the attempt that paid the order, set once
  *   reservepay_extra_captures: payment ids captured for this order that the order did not take, flagged for a refund
- *   reservepay_paid_with:      the method the paying attempt used, from find-payment, for example "Card (CARD)"
+ *   reservepay_paid_with:      the method the paying attempt used, from find-payment, for example "PromptPay"
  */
 class OrderSync
 {
@@ -96,21 +96,38 @@ class OrderSync
     }
 
     /**
-     * The payment session the payment page reopens: the latest attempt's, while its payment is open and unexpired, or
-     * already paid. Otherwise null, so the form starts a new session instead of showing a dead one.
+     * How the payment page starts, from the latest attempt's payment: reopen its session while the payment is open and
+     * unexpired, or confirm the order when it is already paid. The SDK shows a finished session as a new chooser, so a
+     * paid session is never reopened. Otherwise the form starts a new session.
+     *
+     * @return array{paymentSessionId: ?string, paid: bool}
      */
-    public function resumableSession(Order $order): ?string
+    public function paymentPageStart(Order $order): array
     {
         $attempt = self::resumeCandidate($this->attempts($order->getPayment()));
         if ($attempt === null) {
-            return null;
+            return self::pageStart(null, null, time());
         }
         try {
             $found = $this->findAttempt($order, $attempt);
         } catch (ApiException $e) {
-            return null;
+            $found = null;
         }
-        return $found !== null && $found->resumable(time()) ? $attempt['session_id'] : null;
+        return self::pageStart($attempt, $found, time());
+    }
+
+    /**
+     * @return array{paymentSessionId: ?string, paid: bool}
+     */
+    public static function pageStart(?array $attempt, ?FoundPayment $found, int $now): array
+    {
+        if ($attempt === null || $found === null) {
+            return ['paymentSessionId' => null, 'paid' => false];
+        }
+        if (StatusMap::outcome($found->status) === StatusMap::PAID) {
+            return ['paymentSessionId' => null, 'paid' => true];
+        }
+        return ['paymentSessionId' => $found->resumable($now) ? $attempt['session_id'] : null, 'paid' => false];
     }
 
     /**

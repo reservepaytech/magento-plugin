@@ -21,7 +21,8 @@ use Reservepay\Payment\Model\Thb;
 /**
  * The payment page for one order, named by its token. Right after checkout there is no token yet: the order this
  * session just placed gets one and the shopper is redirected to the tokenized URL. A reload reopens the latest payment
- * session while its payment is still open, so a QR code already shown stays the one to pay.
+ * session while its payment is still open, so a QR code already shown stays the one to pay. When that payment is
+ * already paid, the page confirms the order instead of showing the form again.
  */
 class Form implements HttpGetActionInterface
 {
@@ -60,7 +61,7 @@ class Form implements HttpGetActionInterface
         $page->getLayout()->getBlock('reservepay.payment.form')
             ->setOrder($order)
             ->setToken($token)
-            ->setPaymentSessionId($this->orderSync->resumableSession($order));
+            ->setPageStart($this->orderSync->paymentPageStart($order));
         return $page;
     }
 

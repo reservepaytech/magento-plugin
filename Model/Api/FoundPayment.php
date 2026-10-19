@@ -23,25 +23,20 @@ class FoundPayment
     }
 
     /**
-     * Whether the payment form can reopen this payment's session: open and not past its expiry, or already paid. A
-     * payment past its expires_at can no longer be paid, even while its status is still open.
+     * Whether the payment form can reopen this payment's session: open and not past its expiry. A payment past its
+     * expires_at can no longer be paid, even while its status is still open.
      */
     public function resumable(int $now): bool
     {
-        if (StatusMap::outcome($this->status) === StatusMap::PAID) {
-            return true;
-        }
         return StatusMap::outcome($this->status) === StatusMap::OPEN && ($this->expiresAt === null || $this->expiresAt > $now);
     }
 
     /**
-     * The method the shopper actually paid with, for example "Card (CARD)", or null when Reservepay did not say.
+     * The method the shopper actually paid with, for example "PromptPay": the display name, or the method code when
+     * Reservepay gave no name, or null when it said neither.
      */
     public function paidWith(): ?string
     {
-        if ($this->paymentMethodDisplayName !== null && $this->paymentMethod !== null) {
-            return $this->paymentMethodDisplayName . ' (' . $this->paymentMethod . ')';
-        }
         return $this->paymentMethodDisplayName ?? $this->paymentMethod;
     }
 

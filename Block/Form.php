@@ -35,6 +35,7 @@ class Form extends Template
         $order = $this->getData('order');
         $storeId = (int) $order->getStoreId();
         $billing = $order->getBillingAddress();
+        $pageStart = $this->getData('page_start') ?? ['paymentSessionId' => null, 'paid' => false];
         return (string) json_encode([
             'merchantId' => $this->config->merchantId($storeId),
             'installationId' => $this->config->installationId($storeId),
@@ -50,7 +51,8 @@ class Form extends Template
                 ? $this->getUrl('sales/guest/form')
                 : $this->getUrl('sales/order/view', ['order_id' => $order->getEntityId()]),
             'token' => (string) $this->getData('token'),
-            'paymentSessionId' => $this->getData('payment_session_id'),
+            'paymentSessionId' => $pageStart['paymentSessionId'],
+            'paid' => $pageStart['paid'],
             'prefill' => BillingPrefill::formOptions([
                 'street' => $billing?->getStreet() ?? [],
                 'city' => $billing?->getCity(),
@@ -63,7 +65,9 @@ class Form extends Template
             'messages' => [
                 'startFailed' => (string) __('We could not start the payment. Please try again.'),
                 'tryAgain' => (string) __('Try again'),
-                'processing' => (string) __('We are confirming your payment. You will get an email as soon as your order is confirmed.'),
+                'confirming' => (string) __('Payment received. Finishing your order...'),
+                'keepOpen' => (string) __('Please keep this page open.'),
+                'pending' => (string) __("Your bank is still confirming the payment. You can close this page; we'll email you once it's confirmed."),
                 'viewOrder' => (string) __('View order'),
             ],
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);

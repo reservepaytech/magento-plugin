@@ -7,10 +7,41 @@ $script = '(function(data) {' . <<<'JS'
     'use strict';
 
     var container = document.querySelector(data.containerSelector);
+    var frame = container.parentElement;
+    var overlay = frame.querySelector('.reservepay-payment-overlay');
+    var overlayStatus = overlay.querySelector('.reservepay-payment-status');
+    var overlayNote = overlay.querySelector('.reservepay-payment-note');
+    var overlayLink = overlay.querySelector('.reservepay-payment-order');
+    var backForm = document.querySelector('.reservepay-payment-back');
+    overlayLink.href = data.orderUrl;
+    overlayLink.textContent = data.messages.viewOrder;
 
-    if (typeof window.Reservepay === 'undefined') {
-        console.error('Reservepay SDK not loaded.');
-        return;
+    // After a payment succeeds the overlay covers the form until the order is paid. The server may need longer
+    // than the first check, so "pending" lets the shopper leave while the poll keeps checking.
+    var phases = {
+        confirming: { status: data.messages.confirming, note: data.messages.keepOpen, link: false },
+        pending: { status: data.messages.pending, note: '', link: true },
+    };
+    var phase = null;
+    function setPhase(name) {
+        var shown = phase !== null;
+        phase = name;
+        var next = phases[name] || null;
+        overlay.hidden = next === null;
+        container.inert = next !== null;
+        frame.classList.toggle('is-covered', next !== null);
+        if (next === null) {
+            backForm.hidden = false;
+            return;
+        }
+        backForm.hidden = true;
+        overlayStatus.textContent = next.status;
+        overlayNote.textContent = next.note;
+        overlayNote.hidden = next.note === '';
+        overlayLink.hidden = !next.link;
+        if (!shown) {
+            overlay.focus();
+        }
     }
 
     function showMessage(text, linkLabel, linkHref) {
@@ -65,6 +96,9 @@ $script = '(function(data) {' . <<<'JS'
     function leaveFor(outcome) {
         if (!leaving && (outcome === 'paid' || outcome === 'refused')) {
             leaving = true;
+            if (outcome === 'paid') {
+                setPhase('confirming');
+            }
             window.location.href = outcome === 'paid' ? data.successUrl : data.cartUrl;
         }
         return leaving;
@@ -80,11 +114,51 @@ $script = '(function(data) {' . <<<'JS'
         var stopAt = Date.now() + 30 * 60 * 1000;
         (function next() {
             setTimeout(async function () {
-                if (!leaveFor(await checkOrder({})) && Date.now() < stopAt) {
+                var outcome = await checkOrder({});
+                if (leaveFor(outcome)) {
+                    return;
+                }
+                if (phase !== null && outcome === 'failed') {
+                    failPayment();
+                } else if (Date.now() < stopAt) {
                     next();
                 }
             }, 15000);
         })();
+    }
+
+    async function confirmPayment() {
+        setPhase('confirming');
+        var outcome = await checkOrder({});
+        if (leaveFor(outcome)) {
+            return;
+        }
+        if (outcome === 'failed') {
+            failPayment();
+            return;
+        }
+        setPhase('pending');
+        pollOrder();
+    }
+
+    // Same order, new payment session: the reload starts the next attempt and shows the failure message.
+    async function failPayment() {
+        setPhase(null);
+        if (!leaveFor(await checkOrder({ failed: true }))) {
+            leaving = true;
+            window.location.reload();
+        }
+    }
+
+    // The latest payment session is already paid. The SDK would offer a new payment, so the page only confirms.
+    if (data.paid) {
+        confirmPayment();
+        return;
+    }
+
+    if (typeof window.Reservepay === 'undefined') {
+        console.error('Reservepay SDK not loaded.');
+        return;
     }
 
     // The order's customerEmail, customerMobile and billingAddress. SDKs without one of these options ignore it.
@@ -108,18 +182,8 @@ $script = '(function(data) {' . <<<'JS'
                 showMessage(data.messages.startFailed, data.messages.tryAgain, window.location.href);
             }
         },
-        async onPaymentSuccess() {
-            if (!leaveFor(await checkOrder({}))) {
-                showMessage(data.messages.processing, data.messages.viewOrder, data.orderUrl);
-            }
-        },
-        async onPaymentFailed() {
-            // Same order, new payment session: the reload starts the next attempt.
-            if (!leaveFor(await checkOrder({ failed: true }))) {
-                leaving = true;
-                window.location.reload();
-            }
-        },
+        onPaymentSuccess: confirmPayment,
+        onPaymentFailed: failPayment,
     });
     // A reopened session may already be paid, and its form need not report it again.
     if (data.paymentSessionId) {
@@ -137,7 +201,15 @@ JS . '})(' . $block->getInitPayload() . ');';
 ?>
 <script src="<?= $escaper->escapeUrl($block->getSdkUrl()) ?>"></script>
 <div class="reservepay-payment">
-    <div id="reservepay-payment-form"></div>
+    <div class="reservepay-payment-frame">
+        <div id="reservepay-payment-form"></div>
+        <div class="reservepay-payment-overlay" tabindex="-1" hidden>
+            <span class="reservepay-payment-spinner" aria-hidden="true"></span>
+            <p class="reservepay-payment-status" role="status" aria-live="polite"></p>
+            <p class="reservepay-payment-note"></p>
+            <a class="reservepay-payment-order action primary" hidden></a>
+        </div>
+    </div>
     <form class="reservepay-payment-back" method="post" action="<?= $escaper->escapeUrl($block->getBackUrl()) ?>">
         <?= $block->getBlockHtml('formkey') ?>
         <input type="hidden" name="token" value="<?= $escaper->escapeHtmlAttr($block->getToken()) ?>">
