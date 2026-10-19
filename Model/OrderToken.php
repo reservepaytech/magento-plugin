@@ -50,7 +50,7 @@ class OrderToken
             return null;
         }
         if (!hash_equals($this->sign((int) $orderId, (int) $order->getQuoteId(), (int) $expires), $signature)
-            || !PaymentCategories::isReservepay($order->getPayment()?->getMethod())
+            || $order->getPayment()?->getMethod() !== PaymentMethod::CODE
         ) {
             return null;
         }

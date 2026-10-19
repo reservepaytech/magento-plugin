@@ -119,12 +119,6 @@ $script = '(function(data) {' . <<<'JS'
             }
         },
     });
-    // Opens the form on the category picked at checkout. Without one, or with an SDK that lacks the option, the SDK
-    // shows its own chooser.
-    if (data.initialPaymentCategory) {
-        formOptions.initialPaymentCategory = data.initialPaymentCategory;
-    }
-
     window.Reservepay.initReservepayFormUI({
         formType: 'embedded',
         merchantId: String(data.merchantId),

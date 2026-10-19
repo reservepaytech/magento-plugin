@@ -1,11 +1,9 @@
 define(['Reservepay_Payment/js/payment-category-options'], function (loadCategoryOptions) {
     'use strict';
 
-    function methodsCell(cell, option, fromSdk, text) {
-        if (!fromSdk) {
-            cell.textContent = text.noLogos;
-            return;
-        }
+    function methodsCell(option) {
+        var cell = document.createElement('td');
+
         option.logos.forEach(function (logo, index) {
             var item = document.createElement('span');
             var img = document.createElement('img');
@@ -24,27 +22,32 @@ define(['Reservepay_Payment/js/payment-category-options'], function (loadCategor
             item.appendChild(document.createTextNode(logo.name));
             cell.appendChild(item);
         });
+        if (option.more > 0) {
+            cell.appendChild(document.createTextNode(' +' + option.more));
+        }
+        return cell;
     }
 
-    return function (config, table) {
-        loadCategoryOptions(config, Infinity).then(function (result) {
-            var byCategory = {};
+    return function (config, element) {
+        loadCategoryOptions(config, { maxLogos: Infinity, locale: config.locale }).then(function (options) {
+            var table = element.querySelector('[data-role="categories"]');
 
-            result.options.forEach(function (option) {
-                byCategory[option.category] = option;
-            });
-            table.querySelectorAll('tr[data-category]').forEach(function (row) {
-                var option = byCategory[row.getAttribute('data-category')];
-                var checkout = row.querySelector('[data-role="checkout"]');
-                var methods = row.querySelector('[data-role="methods"]');
+            element.querySelector('[data-role="checking"]').hidden = true;
+            if (!options) {
+                element.querySelector('[data-role="fallback"]').hidden = false;
+                return;
+            }
+            options.forEach(function (option) {
+                var row = document.createElement('tr');
+                var label = document.createElement('td');
 
-                checkout.textContent = option ? config.text.shown : config.text.notOffered;
-                checkout.style.whiteSpace = 'nowrap';
-                methods.textContent = '';
-                if (option) {
-                    methodsCell(methods, option, result.fromSdk, config.text);
-                }
+                label.textContent = option.label || option.category;
+                label.style.whiteSpace = 'nowrap';
+                row.appendChild(label);
+                row.appendChild(methodsCell(option));
+                table.tBodies[0].appendChild(row);
             });
+            table.hidden = false;
         });
     };
 });

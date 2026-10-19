@@ -9,11 +9,10 @@ use Reservepay\Payment\Model\PaymentMethod;
 use Reservepay\Payment\Model\Thb;
 
 /**
- * A category's payment method is available only when Reservepay has its credentials and only for a THB quote. The
- * quote currency, not the base currency Magento's canUseForCurrency() check sees, because the order is charged in the
- * currency its grand total is in. A quote without a currency code is not offered. Which categories the installation
- * offers is the browser's call. Global, because Luma reloads the payment methods and places the order over the REST
- * API.
+ * Reservepay is available only when it has its credentials and only for a THB quote. The quote currency, not the base
+ * currency Magento's canUseForCurrency() check sees, because the order is charged in the currency its grand total is
+ * in. A quote without a currency code is not offered. Which payment methods the installation offers is the payment
+ * form's call. Global, because Luma reloads the payment methods and places the order over the REST API.
  */
 class ConfiguredThbOnly implements ObserverInterface
 {
@@ -25,7 +24,7 @@ class ConfiguredThbOnly implements ObserverInterface
     {
         $method = $observer->getEvent()->getMethodInstance();
         $result = $observer->getEvent()->getResult();
-        if (!$method instanceof PaymentMethod || $method->getCategory() === null || !$result->getData('is_available')) {
+        if (!$method instanceof PaymentMethod || !$result->getData('is_available')) {
             return;
         }
         $quote = $observer->getEvent()->getQuote();

@@ -3,31 +3,31 @@
 /** @var \Magento\Framework\Escaper $escaper */
 $init = $block->getData('init');
 $mageInit = $init === null ? '' : json_encode(['Reservepay_Payment/js/payment-methods' => $init]);
+$names = $block->getData('names');
 $updated = $block->getData('updated');
 ?>
 <div class="reservepay-payment-methods">
 <?php if ($init === null): ?>
     <p><?= $escaper->escapeHtml(__('Not fetched yet. Click Refresh payment methods.')) ?></p>
 <?php else: ?>
-    <table class="admin__table-secondary"
-           data-mage-init="<?= $escaper->escapeHtmlAttr($mageInit) ?>">
-        <thead>
-            <tr>
-                <th><?= $escaper->escapeHtml(__('Category')) ?></th>
-                <th><?= $escaper->escapeHtml(__('At checkout')) ?></th>
-                <th><?= $escaper->escapeHtml(__('Methods')) ?></th>
-            </tr>
-        </thead>
-        <tbody>
-        <?php foreach ($block->getData('categories') as $category => $title): ?>
-            <tr data-category="<?= $escaper->escapeHtmlAttr($category) ?>">
-                <td><?= $escaper->escapeHtml($title) ?></td>
-                <td data-role="checkout"><?= $escaper->escapeHtml(__('Checking...')) ?></td>
-                <td data-role="methods"></td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
+    <div data-mage-init="<?= $escaper->escapeHtmlAttr($mageInit) ?>">
+        <p data-role="checking"><?= $escaper->escapeHtml(__('Checking...')) ?></p>
+        <table class="admin__table-secondary" data-role="categories" hidden>
+            <thead>
+                <tr>
+                    <th><?= $escaper->escapeHtml(__('Category')) ?></th>
+                    <th><?= $escaper->escapeHtml(__('Methods')) ?></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div data-role="fallback" hidden>
+            <?php if ($names): ?>
+                <p><?= $escaper->escapeHtml(implode(', ', $names)) ?></p>
+            <?php endif; ?>
+            <p class="note"><span><?= $escaper->escapeHtml(__('Logos appear once the Reservepay SDK is updated.')) ?></span></p>
+        </div>
+    </div>
     <?php if ($updated !== null): ?>
         <p class="note"><span><?= $escaper->escapeHtml($updated) ?></span></p>
     <?php endif; ?>

@@ -14,7 +14,7 @@ use Magento\Sales\Model\Order;
 use Psr\Log\LoggerInterface;
 use Reservepay\Payment\Model\Config;
 use Reservepay\Payment\Model\OrderToken;
-use Reservepay\Payment\Model\PaymentCategories;
+use Reservepay\Payment\Model\PaymentMethod;
 use Reservepay\Payment\Model\Thb;
 
 /**
@@ -60,7 +60,7 @@ class Form implements HttpGetActionInterface
 
     private function isPayable(OrderInterface $order): bool
     {
-        return PaymentCategories::isReservepay($order->getPayment()?->getMethod())
+        return $order->getPayment()?->getMethod() === PaymentMethod::CODE
             && $order->getState() === Order::STATE_PENDING_PAYMENT
             && (float) $order->getGrandTotal() > 0
             && $order->getOrderCurrencyCode() === Thb::CODE

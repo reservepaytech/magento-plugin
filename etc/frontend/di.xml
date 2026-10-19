@@ -3,7 +3,7 @@
     <type name="Magento\Checkout\Model\CompositeConfigProvider">
         <arguments>
             <argument name="configProviders" xsi:type="array">
-                <item name="reservepay_categories" xsi:type="object">Reservepay\Payment\Model\Checkout\ConfigProvider</item>
+                <item name="reservepay" xsi:type="object">Reservepay\Payment\Model\Checkout\ConfigProvider</item>
             </argument>
         </arguments>
     </type>

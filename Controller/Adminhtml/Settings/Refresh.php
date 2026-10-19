@@ -11,7 +11,7 @@ use Reservepay\Payment\Model\InstallationSettings;
 
 /**
  * The settings' "Refresh payment methods" button: fetches the installation settings for the store view the settings
- * page shows and replaces the cached copy, so checkout offers a newly enabled category at once.
+ * page shows and replaces the cached copy, so checkout shows a newly enabled payment method's logo at once.
  */
 class Refresh extends Action implements HttpPostActionInterface
 {
@@ -49,18 +49,15 @@ class Refresh extends Action implements HttpPostActionInterface
             return $redirect;
         }
 
-        $names = array_values(array_unique(array_filter(
-            array_column($settings['payment_methods'], 'name'),
-            fn ($name) => is_string($name) && $name !== ''
-        )));
+        $names = InstallationSettings::methodNames($settings);
         if ($names) {
             $this->messageManager->addSuccessMessage(
                 __('Payment methods refreshed. Reservepay offers: %1.', implode(', ', $names))
             );
         } else {
-            $this->messageManager->addWarningMessage(__(
-                'Payment methods refreshed, but your Reservepay installation offers no payment methods. Checkout shows Credit / debit card.'
-            ));
+            $this->messageManager->addWarningMessage(
+                __('Payment methods refreshed, but your Reservepay installation offers no payment methods.')
+            );
         }
         return $redirect;
     }

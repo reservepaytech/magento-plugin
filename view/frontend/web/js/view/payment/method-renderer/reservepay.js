@@ -2,12 +2,51 @@ define([
     'jquery',
     'ko',
     'Magento_Checkout/js/view/payment/default',
-    'Magento_Checkout/js/action/select-payment-method',
-    'Magento_Checkout/js/checkout-data',
-    'Reservepay_Payment/js/model/payment-category-options',
+    'Reservepay_Payment/js/payment-category-options',
     'mage/url'
-], function ($, ko, Component, selectPaymentMethodAction, checkoutData, categoryOptions, url) {
+], function ($, ko, Component, loadCategoryOptions, url) {
     'use strict';
+
+    var MAX_LOGOS = 6;
+
+    /** Shared by every renderer instance, so a reload of the payment list does not ask the SDK again. */
+    var rowLogos = ko.observable({ logos: [], more: 0 });
+    var asked = false;
+
+    // The first logo of each category, then the second of each, and so on. A logo two categories share shows once.
+    function roundRobin(options) {
+        var logos = [];
+        var seen = {};
+        var depth = 0;
+        var i;
+
+        options.forEach(function (option) {
+            depth = Math.max(depth, option.logos.length);
+        });
+        for (i = 0; i < depth; i++) {
+            options.forEach(function (option) {
+                var logo = option.logos[i];
+
+                if (logo && !seen[logo.src]) {
+                    seen[logo.src] = true;
+                    logos.push(logo);
+                }
+            });
+        }
+        return { logos: logos.slice(0, MAX_LOGOS), more: Math.max(0, logos.length - MAX_LOGOS) };
+    }
+
+    function askOnce() {
+        if (asked) {
+            return;
+        }
+        asked = true;
+        loadCategoryOptions(window.checkoutConfig.payment.reservepay || {}, { maxLogos: Infinity }).then(function (options) {
+            if (options) {
+                rowLogos(roundRobin(options));
+            }
+        });
+    }
 
     return Component.extend({
         defaults: {
@@ -17,39 +56,10 @@ define([
         },
 
         initialize: function () {
-            var self = this;
-
             this._super();
-            this.category = (window.checkoutConfig.payment.reservepay.categories.find(function (entry) {
-                return entry.code === self.getCode();
-            }) || {}).category;
-            this.isVisible = ko.pureComputed(function () {
-                return self.isVisibleIn(categoryOptions());
-            });
-            // A selection made before the SDK answered must not stay on a hidden option. Reads the state directly, not
-            // isVisible, which may not have updated yet when this runs.
-            ko.computed(function () {
-                var state = categoryOptions();
-
-                if (state !== null && !self.isVisibleIn(state) && self.isChecked() === self.getCode()) {
-                    selectPaymentMethodAction(null);
-                    checkoutData.setSelectedPaymentMethod(null);
-                }
-            });
+            this.rowLogos = rowLogos;
+            askOnce();
             return this;
-        },
-
-        isVisibleIn: function (state) {
-            return state !== null && !!state.byCategory[this.category];
-        },
-
-        /**
-         * @returns {{logos: Array<{symbol: string, name: string, src: string}>, more: number}}
-         */
-        getOption: function () {
-            var state = categoryOptions();
-
-            return (state && state.byCategory[this.category]) || { logos: [], more: 0 };
         },
 
         afterPlaceOrder: function () {

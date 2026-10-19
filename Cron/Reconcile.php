@@ -6,7 +6,7 @@ use Magento\Framework\App\ResourceConnection;
 use Magento\Sales\Model\Order;
 use Psr\Log\LoggerInterface;
 use Reservepay\Payment\Model\OrderSync;
-use Reservepay\Payment\Model\PaymentCategories;
+use Reservepay\Payment\Model\PaymentMethod;
 
 /**
  * Settles orders whose shopper never came back from the payment form, without any help from the browser, and watches
@@ -75,7 +75,7 @@ class Reconcile
         $select = $connection->select()
             ->from(['o' => $this->resource->getTableName('sales_order')], ['entity_id', 'increment_id'])
             ->join(['p' => $this->resource->getTableName('sales_order_payment')], 'p.parent_id = o.entity_id', [])
-            ->where('p.method IN (?)', PaymentCategories::methodCodes())
+            ->where('p.method = ?', PaymentMethod::CODE)
             ->where('p.' . OrderSync::LAST_CHECKED . ' IS NOT NULL')
             // A paid order with a single attempt has nothing left to watch.
             ->where(

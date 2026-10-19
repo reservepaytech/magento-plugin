@@ -8,7 +8,7 @@ use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Reservepay\Payment\Model\OrderSync;
-use Reservepay\Payment\Model\PaymentCategories;
+use Reservepay\Payment\Model\PaymentMethod;
 
 /**
  * The order view's "Check Reservepay payment" button.
@@ -36,7 +36,7 @@ class CheckPayment extends Action implements HttpPostActionInterface
             return $redirect->setPath('sales/order/');
         }
         $redirect->setPath('sales/order/view', ['order_id' => $orderId]);
-        if (!PaymentCategories::isReservepay($order->getPayment()?->getMethod())) {
+        if ($order->getPayment()?->getMethod() !== PaymentMethod::CODE) {
             $this->messageManager->addErrorMessage(__('This order does not use Reservepay.'));
             return $redirect;
         }

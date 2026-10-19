@@ -6,16 +6,16 @@ use Magento\Backend\Block\Template\Context;
 use Magento\Backend\Block\Widget\Button;
 use Magento\Config\Block\System\Config\Form\Field;
 use Magento\Framework\Data\Form\Element\AbstractElement;
-use Magento\Store\Model\ScopeInterface;
+use Magento\Framework\Locale\ResolverInterface;
 use Reservepay\Payment\Model\AdminScope;
 use Reservepay\Payment\Model\Config;
 use Reservepay\Payment\Model\InstallationSettings;
-use Reservepay\Payment\Model\PaymentCategories;
 
 /**
- * The settings' "Payment methods" field: what checkout offers per category, worked out in the browser by the same
- * module checkout uses from the same cached settings, and the "Refresh payment methods" button. The button posts with
- * the form key to a controller outside the settings form, because a nested form cannot be submitted.
+ * The settings' "Payment methods" field: the installation's payment methods by category, as the SDK groups and labels
+ * them in the admin user's locale, from the same cached settings checkout uses, and the "Refresh payment methods"
+ * button. The button posts with the form key to a controller outside the settings form, because a nested form cannot
+ * be submitted.
  */
 class RefreshPaymentMethods extends Field
 {
@@ -26,6 +26,7 @@ class RefreshPaymentMethods extends Field
         private readonly InstallationSettings $installationSettings,
         private readonly Config $config,
         private readonly AdminScope $adminScope,
+        private readonly ResolverInterface $localeResolver,
         array $data = []
     ) {
         parent::__construct($context, $data);
@@ -42,39 +43,17 @@ class RefreshPaymentMethods extends Field
         $storeId = $this->adminScope->storeId($this->getRequest());
         $settings = $this->config->isConfigured($storeId) ? $this->installationSettings->forStore($storeId) : null;
         $this->addData([
-            'categories' => $this->categories($storeId),
-            'settings' => $settings,
+            'names' => $settings === null ? [] : InstallationSettings::methodNames($settings),
             'updated' => $settings === null ? null : $this->updated($this->installationSettings->fetchedAt($storeId)),
             'init' => $settings === null ? null : [
-                'categories' => array_map(
-                    fn (string $category) => ['category' => $category],
-                    array_keys(PaymentCategories::CODES)
-                ),
                 'settings' => $settings,
                 'sdkUrl' => $this->config->sdkUrl($storeId),
                 'paymentAssetsUrl' => $this->config->paymentAssetsUrl($storeId) ?: null,
-                'text' => [
-                    'shown' => (string) __('Shown'),
-                    'notOffered' => (string) __('Not offered'),
-                    'noLogos' => (string) __('Logos appear once the Reservepay SDK is updated.'),
-                ],
+                'locale' => $this->localeResolver->getLocale(),
             ],
             'button' => $this->button($element),
         ]);
         return $this->_toHtml();
-    }
-
-    /**
-     * @return array<string, string> category => its checkout title, in the chooser's order
-     */
-    private function categories(int $storeId): array
-    {
-        $titles = [];
-        foreach (PaymentCategories::CODES as $category => $code) {
-            $title = $this->_scopeConfig->getValue("payment/{$code}/title", ScopeInterface::SCOPE_STORE, $storeId);
-            $titles[$category] = (string) __((string) $title);
-        }
-        return $titles;
     }
 
     private function updated(?int $fetchedAt): ?string

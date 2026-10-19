@@ -35,11 +35,11 @@ $order = function (int $entityId, string $incrementId, int $storeId, int $quoteI
     $order->setData(OrderInterface::PAYMENT, $objectManager->create(Payment::class)->setMethod($method));
     return $order;
 };
-$a = $order(1, '100000001', 1, 11, 'reservepay_card');
-$b = $order(2, '100000002', 1, 12, 'reservepay_installment');
+$a = $order(1, '100000001', 1, 11, 'reservepay_payment');
+$b = $order(2, '100000002', 1, 12, 'reservepay_payment');
 $checkmo = $order(3, '100000003', 1, 13, 'checkmo');
 // Increment ids are only unique per store, so a second store can repeat one.
-$otherStore = $order(4, '100000001', 2, 14, 'reservepay_card');
+$otherStore = $order(4, '100000001', 2, 14, 'reservepay_payment');
 
 $repository = new class ([$a, $b, $checkmo, $otherStore]) implements OrderRepositoryInterface {
     public function __construct(private readonly array $orders)

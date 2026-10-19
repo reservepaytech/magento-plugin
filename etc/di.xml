@@ -12,42 +12,6 @@
             </argument>
         </arguments>
     </virtualType>
-    <!-- One payment method per payment category. Each shares reservepay_payment's settings (Model\PaymentMethod). -->
-    <virtualType name="Reservepay\Payment\Model\Method\Card" type="Reservepay\Payment\Model\PaymentMethod">
-        <arguments>
-            <argument name="data" xsi:type="array">
-                <item name="category" xsi:type="string">CARD</item>
-            </argument>
-        </arguments>
-    </virtualType>
-    <virtualType name="Reservepay\Payment\Model\Method\Installment" type="Reservepay\Payment\Model\PaymentMethod">
-        <arguments>
-            <argument name="data" xsi:type="array">
-                <item name="category" xsi:type="string">INSTALLMENT</item>
-            </argument>
-        </arguments>
-    </virtualType>
-    <virtualType name="Reservepay\Payment\Model\Method\ScanToPay" type="Reservepay\Payment\Model\PaymentMethod">
-        <arguments>
-            <argument name="data" xsi:type="array">
-                <item name="category" xsi:type="string">SCAN_TO_PAY</item>
-            </argument>
-        </arguments>
-    </virtualType>
-    <virtualType name="Reservepay\Payment\Model\Method\MobileBanking" type="Reservepay\Payment\Model\PaymentMethod">
-        <arguments>
-            <argument name="data" xsi:type="array">
-                <item name="category" xsi:type="string">MOBILE_BANKING</item>
-            </argument>
-        </arguments>
-    </virtualType>
-    <virtualType name="Reservepay\Payment\Model\Method\EwalletApp" type="Reservepay\Payment\Model\PaymentMethod">
-        <arguments>
-            <argument name="data" xsi:type="array">
-                <item name="category" xsi:type="string">EWALLET_APP</item>
-            </argument>
-        </arguments>
-    </virtualType>
 
     <type name="Reservepay\Payment\Model\Api\Client">
         <arguments>

@@ -6,7 +6,7 @@ use Magento\Framework\AuthorizationInterface;
 use Magento\Framework\View\LayoutInterface;
 use Magento\Sales\Block\Adminhtml\Order\View;
 use Reservepay\Payment\Controller\Adminhtml\Order\CheckPayment;
-use Reservepay\Payment\Model\PaymentCategories;
+use Reservepay\Payment\Model\PaymentMethod;
 
 class CheckPaymentButton
 {
@@ -18,7 +18,7 @@ class CheckPaymentButton
     {
         $order = $subject->getOrder();
         if ($order
-            && PaymentCategories::isReservepay($order->getPayment()?->getMethod())
+            && $order->getPayment()?->getMethod() === PaymentMethod::CODE
             && $this->authorization->isAllowed(CheckPayment::ADMIN_RESOURCE)
         ) {
             $message = $subject->escapeJs(__('Check this order\'s payment with Reservepay now?'));

@@ -5,9 +5,8 @@ namespace Reservepay\Payment\Block;
 use Reservepay\Payment\Model\OrderSync;
 
 /**
- * The order's payment information in admin, the customer account, emails and PDFs. The title names Reservepay next
- * to the category label that checkout shows alone. It also shows what the shopper actually paid with, which can differ
- * from the category picked at checkout: the payment form lets the shopper switch methods.
+ * The order's payment information in admin, the customer account, emails and PDFs: the checkout title and what the
+ * shopper actually paid with, picked on the payment form.
  */
 class Info extends \Magento\Payment\Block\Info
 {
@@ -15,7 +14,7 @@ class Info extends \Magento\Payment\Block\Info
 
     public function getTitle(): string
     {
-        return (string) __('Reservepay - %1', $this->getMethod()->getTitle());
+        return (string) $this->getMethod()->getTitle();
     }
 
     public function toPdf()

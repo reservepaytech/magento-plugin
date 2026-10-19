@@ -3,39 +3,13 @@
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
         <payment>
-            <!-- Holds the settings every category below reads. Never offered at checkout. -->
             <reservepay_payment>
                 <active>0</active>
-                <title>Reservepay</title>
+                <title>Pay with Reservepay</title>
                 <model>Reservepay\Payment\Model\PaymentMethod</model>
                 <!-- Any value makes Magento call PaymentMethod::initialize() when the order is placed. -->
                 <payment_action>authorize_capture</payment_action>
             </reservepay_payment>
-            <reservepay_card>
-                <model>Reservepay\Payment\Model\Method\Card</model>
-                <title>Credit / debit card</title>
-                <sort_order>200</sort_order>
-            </reservepay_card>
-            <reservepay_installment>
-                <model>Reservepay\Payment\Model\Method\Installment</model>
-                <title>Installment</title>
-                <sort_order>201</sort_order>
-            </reservepay_installment>
-            <reservepay_scan_to_pay>
-                <model>Reservepay\Payment\Model\Method\ScanToPay</model>
-                <title>Scan to pay (PromptPay)</title>
-                <sort_order>202</sort_order>
-            </reservepay_scan_to_pay>
-            <reservepay_mobile_banking>
-                <model>Reservepay\Payment\Model\Method\MobileBanking</model>
-                <title>Mobile banking</title>
-                <sort_order>203</sort_order>
-            </reservepay_mobile_banking>
-            <reservepay_ewallet_app>
-                <model>Reservepay\Payment\Model\Method\EwalletApp</model>
-                <title>E-wallet</title>
-                <sort_order>204</sort_order>
-            </reservepay_ewallet_app>
         </payment>
         <!-- The payment form page gets the same enforced, nonce-only script policy as Magento's own checkout page. -->
         <csp>

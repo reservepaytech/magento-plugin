@@ -7,8 +7,8 @@ use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Store\Model\ScopeInterface;
 
 /**
- * The payment/reservepay_payment settings that every payment category shares: credentials and the Reservepay API, SDK and
- * payment assets locations. An empty location means production, because environment config such as
+ * The payment/reservepay_payment settings: credentials and the Reservepay API, SDK and payment assets locations. An
+ * empty location means production, because environment config such as
  * CONFIG__DEFAULT__PAYMENT__RESERVEPAY_PAYMENT__SDK_URL= stores '' and hides any default in config.xml.
  */
 class Config
@@ -94,7 +94,7 @@ class Config
     private function value(string $field, ?int $storeId): string
     {
         return trim((string) $this->scopeConfig->getValue(
-            'payment/' . PaymentCategories::SETTINGS_CODE . '/' . $field,
+            'payment/' . PaymentMethod::CODE . '/' . $field,
             ScopeInterface::SCOPE_STORE,
             $storeId
         ));

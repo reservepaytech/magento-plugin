@@ -50,6 +50,17 @@ class InstallationSettings
         );
     }
 
+    /**
+     * @return string[] the payment method names, in the settings' order, each once
+     */
+    public static function methodNames(array $settings): array
+    {
+        return array_values(array_unique(array_filter(
+            array_column($settings['payment_methods'] ?? [], 'name'),
+            fn ($name) => is_string($name) && $name !== ''
+        )));
+    }
+
     public function fetchedAt(int $storeId): ?int
     {
         return $this->remoteCache->fetchedAt(self::CACHE_NAME, $this->key($storeId));
