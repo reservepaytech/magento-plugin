@@ -85,6 +85,35 @@ class OrderSync
     }
 
     /**
+     * The payment session the payment page reopens: the latest attempt's, while its payment is open and unexpired, or
+     * already paid. Otherwise null, so the form starts a new session instead of showing a dead one.
+     */
+    public function resumableSession(Order $order): ?string
+    {
+        $attempt = self::resumeCandidate($this->attempts($order->getPayment()));
+        if ($attempt === null) {
+            return null;
+        }
+        try {
+            $found = $this->findAttempt($order, $attempt);
+        } catch (ApiException $e) {
+            return null;
+        }
+        return $found !== null && $found->resumable(time()) ? $attempt['session_id'] : null;
+    }
+
+    /**
+     * The latest attempt, when Reservepay took its payment. Earlier attempts are sessions the shopper already left.
+     */
+    public static function resumeCandidate(array $attempts): ?array
+    {
+        $latest = end($attempts);
+        return is_array($latest) && is_string($latest['payment_id'] ?? null) && is_string($latest['session_id'] ?? null)
+            ? $latest
+            : null;
+    }
+
+    /**
      * Asks Reservepay about every attempt and completes the order on the first paid one. The reconciler, webhooks and
      * the admin check also watch paid, cancelled and held orders for a capture that the order cannot take.
      *

@@ -5,9 +5,11 @@ require __DIR__ . '/../Model/StatusMap.php';
 require __DIR__ . '/../Model/Thb.php';
 require __DIR__ . '/../Model/ExternalId.php';
 require __DIR__ . '/../Model/Api/FoundPayment.php';
+require __DIR__ . '/../Model/OrderSync.php';
 
 use Reservepay\Payment\Model\Api\FoundPayment;
 use Reservepay\Payment\Model\ExternalId;
+use Reservepay\Payment\Model\OrderSync;
 use Reservepay\Payment\Model\StatusMap;
 use Reservepay\Payment\Model\Thb;
 
@@ -79,5 +81,23 @@ check('belongs: external id matches, other session', $found(['payment_session_id
 check('belongs: stored payment id, all match', $found()->belongsTo($stored), true);
 check('belongs: stored payment id, other external id', $found(['external_id' => 'm2-clone-ffff_order_000000007_1'])->belongsTo($stored), false);
 check('belongs: stored payment id differs', $found(['payment_id' => 'pay_2'])->belongsTo($stored), false);
+
+$payment = fn (string $status, ?int $expiresAt = null) => new FoundPayment('pay_1', 'x', 'pse_1', $status, 100, 'THB', null, null, $expiresAt);
+foreach (['PENDING' => true, 'AUTHORIZED' => true, 'SUCCESSFUL' => true, 'FAILED' => false, 'EXPIRED' => false, 'VOIDED' => false, 'REFUNDED' => false, 'SOMETHING_NEW' => false] as $status => $resumes) {
+    check("$status payment with no expiry resumable", $payment($status)->resumable(1000), $resumes);
+}
+check('open payment before its expiry is resumable', $payment('PENDING', 1001)->resumable(1000), true);
+check('open payment at its expiry is not resumable', $payment('PENDING', 1000)->resumable(1000), false);
+check('paid payment past its expiry is still resumable', $payment('SUCCESSFUL', 900)->resumable(1000), true);
+check('find-payment expires_at is read', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'PENDING', 'amount' => 1, 'currency' => 'THB', 'expires_at' => 1234])->expiresAt, 1234);
+check('find-payment without expires_at', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'PENDING', 'amount' => 1, 'currency' => 'THB'])->expiresAt, null);
+
+$first = ['external_id' => 'm2-shop-a1b2_order_1_1', 'payment_id' => 'pay_1', 'session_id' => 'pse_1', 'created_at' => 1];
+$second = ['external_id' => 'm2-shop-a1b2_order_1_2', 'payment_id' => 'pay_2', 'session_id' => 'pse_2', 'created_at' => 2];
+$unstarted = ['external_id' => 'm2-shop-a1b2_order_1_3', 'payment_id' => null, 'session_id' => 'pse_3', 'created_at' => 3];
+check('no attempts, nothing to resume', OrderSync::resumeCandidate([]), null);
+check('the latest attempt is the candidate', OrderSync::resumeCandidate([$first, $second]), $second);
+check('a latest attempt Reservepay never took is not resumed', OrderSync::resumeCandidate([$first, $second, $unstarted]), null);
+check('an attempt without a session is not resumed', OrderSync::resumeCandidate([['payment_id' => 'pay_1']]), null);
 
 done();

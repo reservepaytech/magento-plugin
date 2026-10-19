@@ -2,6 +2,8 @@
 
 namespace Reservepay\Payment\Model\Api;
 
+use Reservepay\Payment\Model\StatusMap;
+
 /**
  * The fields of a find-payment response that the order sync relies on.
  */
@@ -15,8 +17,21 @@ class FoundPayment
         public readonly int $amount,
         public readonly string $currency,
         public readonly ?string $paymentMethod = null,
-        public readonly ?string $paymentMethodDisplayName = null
+        public readonly ?string $paymentMethodDisplayName = null,
+        public readonly ?int $expiresAt = null
     ) {
+    }
+
+    /**
+     * Whether the payment form can reopen this payment's session: open and not past its expiry, or already paid. A
+     * payment past its expires_at can no longer be paid, even while its status is still open.
+     */
+    public function resumable(int $now): bool
+    {
+        if (StatusMap::outcome($this->status) === StatusMap::PAID) {
+            return true;
+        }
+        return StatusMap::outcome($this->status) === StatusMap::OPEN && ($this->expiresAt === null || $this->expiresAt > $now);
     }
 
     /**
@@ -64,7 +79,8 @@ class FoundPayment
             $body['amount'],
             $body['currency'],
             self::optionalString($body['payment_method'] ?? null),
-            self::optionalString($body['payment_method_display_name'] ?? null)
+            self::optionalString($body['payment_method_display_name'] ?? null),
+            is_int($body['expires_at'] ?? null) ? $body['expires_at'] : null
         );
     }
 

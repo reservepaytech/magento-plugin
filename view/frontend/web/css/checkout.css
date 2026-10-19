@@ -1,0 +1,69 @@
+.reservepay-categories {
+    margin: 6px 0 0 28px;
+    font-size: 13px;
+}
+
+/* Only the labels and the chevron toggle the panel, not the empty space beside them. */
+.reservepay-categories > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: fit-content;
+    max-width: 100%;
+    cursor: pointer;
+    list-style: none;
+}
+
+.reservepay-categories > summary::-webkit-details-marker {
+    display: none;
+}
+
+.reservepay-chevron {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    flex: none;
+    margin: 0 2px 3px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg);
+    transition: transform 0.15s;
+    vertical-align: middle;
+}
+
+.reservepay-categories[open] .reservepay-chevron {
+    margin-bottom: -1px;
+    transform: rotate(-135deg);
+}
+
+.reservepay-categories > ul {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.reservepay-category {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    align-items: start;
+    gap: 12px;
+    margin: 0 0 8px;
+}
+
+.reservepay-category-label {
+    line-height: 24px;
+}
+
+.reservepay-category-logos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* Themes stretch checkout images, so the size is pinned. */
+.reservepay-logo {
+    width: 24px;
+    height: 24px;
+    max-width: none;
+    object-fit: contain;
+}

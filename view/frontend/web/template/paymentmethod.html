@@ -7,19 +7,23 @@
         <img data-bind="attr: { src: require.toUrl('Reservepay_Payment/images/reservepay_small.svg'), alt: '[Reservepay]' }" style="vertical-align: middle;" />
         <label class="label" data-bind="attr: {'for': getCode()}">
             <span data-bind="text: getTitle()"></span>
-            <!-- ko with: rowLogos -->
-            <!-- ko if: logos.length -->
-            <span class="reservepay-logos" aria-hidden="true" style="display: inline-flex; gap: 6px; align-items: center; vertical-align: middle; margin-left: 8px;">
-                <!-- ko foreach: logos -->
-                <img data-bind="attr: {src: src}" alt="" width="24" height="24" style="width: 24px; height: 24px;"/>
-                <!-- /ko -->
-                <!-- ko if: more > 0 -->
-                <span data-bind="text: '+' + more" style="border: 1px solid #ccc; border-radius: 4px; font-size: 12px; line-height: 22px; min-width: 22px; padding: 0 3px; text-align: center;"></span>
-                <!-- /ko -->
-            </span>
-            <!-- /ko -->
-            <!-- /ko -->
         </label>
+        <!-- ko if: categories().length -->
+        <details class="reservepay-categories">
+            <summary>
+                <span data-bind="text: categoryLabels()"></span>
+                <span class="reservepay-chevron" aria-hidden="true"></span>
+            </summary>
+            <ul data-bind="foreach: categories">
+                <li class="reservepay-category">
+                    <span class="reservepay-category-label" data-bind="text: label"></span>
+                    <span class="reservepay-category-logos" data-bind="foreach: logos">
+                        <img class="reservepay-logo" data-bind="attr: {src: src, alt: name, title: name}" width="24" height="24"/>
+                    </span>
+                </li>
+            </ul>
+        </details>
+        <!-- /ko -->
     </div>
 
     <div class="payment-method-content">

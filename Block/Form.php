@@ -50,6 +50,7 @@ class Form extends Template
                 ? $this->getUrl('sales/guest/form')
                 : $this->getUrl('sales/order/view', ['order_id' => $order->getEntityId()]),
             'token' => (string) $this->getData('token'),
+            'paymentSessionId' => $this->getData('payment_session_id'),
             'prefill' => BillingPrefill::formOptions([
                 'street' => $billing?->getStreet() ?? [],
                 'city' => $billing?->getCity(),

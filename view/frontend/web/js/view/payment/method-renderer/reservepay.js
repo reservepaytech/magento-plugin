@@ -7,43 +7,29 @@ define([
 ], function ($, ko, Component, loadCategoryOptions, url) {
     'use strict';
 
-    var MAX_LOGOS = 6;
-
     /** Shared by every renderer instance, so a reload of the payment list does not ask the SDK again. */
-    var rowLogos = ko.observable({ logos: [], more: 0 });
+    var categories = ko.observableArray([]);
+    var categoryLabels = ko.pureComputed(function () {
+        return categories().map(function (category) {
+            return category.label;
+        }).join(', ');
+    });
     var asked = false;
 
-    // The first logo of each category, then the second of each, and so on. A logo two categories share shows once.
-    function roundRobin(options) {
-        var logos = [];
-        var seen = {};
-        var depth = 0;
-        var i;
-
-        options.forEach(function (option) {
-            depth = Math.max(depth, option.logos.length);
-        });
-        for (i = 0; i < depth; i++) {
-            options.forEach(function (option) {
-                var logo = option.logos[i];
-
-                if (logo && !seen[logo.src]) {
-                    seen[logo.src] = true;
-                    logos.push(logo);
-                }
-            });
-        }
-        return { logos: logos.slice(0, MAX_LOGOS), more: Math.max(0, logos.length - MAX_LOGOS) };
+    function toCategory(option) {
+        return { label: option.label || option.category, logos: option.logos };
     }
 
     function askOnce() {
+        var config = window.checkoutConfig.payment.reservepay || {};
+
         if (asked) {
             return;
         }
         asked = true;
-        loadCategoryOptions(window.checkoutConfig.payment.reservepay || {}, { maxLogos: Infinity }).then(function (options) {
+        loadCategoryOptions(config, { maxLogos: Infinity, locale: config.locale }).then(function (options) {
             if (options) {
-                rowLogos(roundRobin(options));
+                categories(options.map(toCategory));
             }
         });
     }
@@ -57,7 +43,8 @@ define([
 
         initialize: function () {
             this._super();
-            this.rowLogos = rowLogos;
+            this.categories = categories;
+            this.categoryLabels = categoryLabels;
             askOnce();
             return this;
         },

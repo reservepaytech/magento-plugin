@@ -13,13 +13,15 @@ use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Sales\Model\Order;
 use Psr\Log\LoggerInterface;
 use Reservepay\Payment\Model\Config;
+use Reservepay\Payment\Model\OrderSync;
 use Reservepay\Payment\Model\OrderToken;
 use Reservepay\Payment\Model\PaymentMethod;
 use Reservepay\Payment\Model\Thb;
 
 /**
  * The payment page for one order, named by its token. Right after checkout there is no token yet: the order this
- * session just placed gets one and the shopper is redirected to the tokenized URL.
+ * session just placed gets one and the shopper is redirected to the tokenized URL. A reload reopens the latest payment
+ * session while its payment is still open, so a QR code already shown stays the one to pay.
  */
 class Form implements HttpGetActionInterface
 {
@@ -33,6 +35,7 @@ class Form implements HttpGetActionInterface
         private readonly CheckoutSession $checkoutSession,
         private readonly Config $config,
         private readonly ManagerInterface $messageManager,
+        private readonly OrderSync $orderSync,
         private readonly LoggerInterface $logger
     ) {
     }
@@ -54,7 +57,10 @@ class Form implements HttpGetActionInterface
             return $this->refuse();
         }
         $page = $this->pageFactory->create();
-        $page->getLayout()->getBlock('reservepay.payment.form')->setOrder($order)->setToken($token);
+        $page->getLayout()->getBlock('reservepay.payment.form')
+            ->setOrder($order)
+            ->setToken($token)
+            ->setPaymentSessionId($this->orderSync->resumableSession($order));
         return $page;
     }
 

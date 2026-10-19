@@ -92,6 +92,8 @@ $script = '(function(data) {' . <<<'JS'
         containerSelector: data.containerSelector,
         amount: String(data.amount),
         currency: data.currency,
+        // A started session keeps its method, so a shown QR code cannot be swapped for a card in the same form.
+        lockPaymentMethodOnSessionReady: true,
         async onPaymentSessionReady(sessionId) {
             var started = false;
             try {
@@ -119,6 +121,12 @@ $script = '(function(data) {' . <<<'JS'
             }
         },
     });
+    // A reopened session may already be paid, and its form need not report it again.
+    if (data.paymentSessionId) {
+        formOptions.paymentSessionId = data.paymentSessionId;
+        checkOrder({}).then(leaveFor);
+        pollOrder();
+    }
     window.Reservepay.initReservepayFormUI({
         formType: 'embedded',
         merchantId: String(data.merchantId),
