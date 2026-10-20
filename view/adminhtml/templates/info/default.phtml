@@ -2,10 +2,11 @@
 /** @var \Reservepay\Payment\Block\Info $block */
 /** @var \Magento\Framework\Escaper $escaper */
 $specificInfo = $block->getSpecificInformation();
+$paidPayment = $block->getPaidPayment();
 ?>
 <?= $escaper->escapeHtml($block->getTitle()) ?>
 
-<?php if ($specificInfo): ?>
+<?php if ($specificInfo || $paidPayment): ?>
     <table class="data-table admin__table-secondary">
     <?php foreach ($specificInfo as $label => $value): ?>
         <tr>
@@ -13,6 +14,19 @@ $specificInfo = $block->getSpecificInformation();
             <td><?= /* @noEscape */ nl2br($escaper->escapeHtml(implode("\n", $block->getValueAsArray($value, true)))) ?></td>
         </tr>
     <?php endforeach; ?>
+    <?php if ($paidPayment): ?>
+        <tr>
+            <th><?= $escaper->escapeHtml(__('Payment ID')) ?>:</th>
+            <td>
+            <?php if ($paidPayment['url'] !== null): ?>
+                <a href="<?= $escaper->escapeUrl($paidPayment['url']) ?>" target="_blank" rel="noopener noreferrer"
+                   title="<?= $escaper->escapeHtmlAttr(__('Open in the Reservepay dashboard')) ?>"><?= $escaper->escapeHtml($paidPayment['id']) ?></a>
+            <?php else: ?>
+                <?= $escaper->escapeHtml($paidPayment['id']) ?>
+            <?php endif; ?>
+            </td>
+        </tr>
+    <?php endif; ?>
     </table>
 <?php endif; ?>
 

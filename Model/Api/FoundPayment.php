@@ -9,6 +9,16 @@ use Reservepay\Payment\Model\StatusMap;
  */
 class FoundPayment
 {
+    // find-payment's card_network values, as shoppers know them.
+    private const CARD_NETWORKS = [
+        'visa' => 'Visa',
+        'mastercard' => 'Mastercard',
+        'jcb' => 'JCB',
+        'amex' => 'American Express',
+        'american_express' => 'American Express',
+        'unionpay' => 'UnionPay',
+    ];
+
     public function __construct(
         public readonly string $paymentId,
         public readonly ?string $externalId,
@@ -18,7 +28,11 @@ class FoundPayment
         public readonly string $currency,
         public readonly ?string $paymentMethod = null,
         public readonly ?string $paymentMethodDisplayName = null,
-        public readonly ?int $expiresAt = null
+        public readonly ?int $expiresAt = null,
+        public readonly ?string $cardNetwork = null,
+        public readonly ?string $cardLastDigits = null,
+        public readonly ?string $installmentBank = null,
+        public readonly ?int $installmentTerm = null
     ) {
     }
 
@@ -32,12 +46,26 @@ class FoundPayment
     }
 
     /**
-     * The method the shopper actually paid with, for example "PromptPay": the display name, or the method code when
-     * Reservepay gave no name, or null when it said neither.
+     * What the shopper actually paid with, for example "Visa •• 02", "Installment · Krungsri · 10 months" or
+     * "PromptPay", or null when Reservepay said nothing about the method.
+     *
+     * @param callable(string, mixed...): string $phrase translates "Installment" and "%1 months", like __()
      */
-    public function paidWith(): ?string
+    public function paidWith(callable $phrase): ?string
     {
-        return $this->paymentMethodDisplayName ?? $this->paymentMethod;
+        if (strtoupper((string) $this->paymentMethod) === 'INSTALLMENT' || $this->installmentTerm !== null) {
+            return implode(' · ', array_filter([
+                $phrase('Installment'),
+                $this->installmentBank,
+                $this->installmentTerm !== null ? $phrase('%1 months', $this->installmentTerm) : null,
+            ]));
+        }
+        $name = $this->paymentMethodDisplayName ?? $this->paymentMethod;
+        if ($this->cardNetwork !== null) {
+            $network = self::CARD_NETWORKS[strtolower($this->cardNetwork)] ?? $name ?? $this->cardNetwork;
+            return $this->cardLastDigits !== null ? $network . ' •• ' . $this->cardLastDigits : $network;
+        }
+        return $name;
     }
 
     /**
@@ -75,7 +103,11 @@ class FoundPayment
             $body['currency'],
             self::optionalString($body['payment_method'] ?? null),
             self::optionalString($body['payment_method_display_name'] ?? null),
-            is_int($body['expires_at'] ?? null) ? $body['expires_at'] : null
+            is_int($body['expires_at'] ?? null) ? $body['expires_at'] : null,
+            self::optionalString($body['card_network'] ?? null),
+            self::optionalString($body['card_last_digits'] ?? null),
+            self::optionalString($body['installment_bank_display_name'] ?? null),
+            is_int($body['installment_term'] ?? null) ? $body['installment_term'] : null
         );
     }
 

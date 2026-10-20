@@ -26,7 +26,7 @@ use Reservepay\Payment\Model\Api\FoundPayment;
  *   reservepay_attempts:       [{external_id: "m2-<host>-<hex>_order_<increment id>_<n>", payment_id: "pay_..."|null, session_id, created_at}]
  *   reservepay_paid_attempt:   external_id of the attempt that paid the order, set once
  *   reservepay_extra_captures: payment ids captured for this order that the order did not take, flagged for a refund
- *   reservepay_paid_with:      the method the paying attempt used, from find-payment, for example "PromptPay"
+ *   reservepay_paid_with:      what the paying attempt used, from find-payment, for example "Visa •• 02" or "PromptPay"
  */
 class OrderSync
 {
@@ -147,6 +147,24 @@ class OrderSync
      *
      * @return string a StatusMap outcome
      */
+    /**
+     * The Reservepay payment id that paid the order, or null before it is paid and on orders from before 2.0.
+     */
+    public static function paidPaymentId(array $additionalInformation): ?string
+    {
+        $paid = $additionalInformation[self::PAID_ATTEMPT] ?? null;
+        $attempts = $additionalInformation[self::ATTEMPTS] ?? null;
+        if (!is_string($paid) || !is_array($attempts)) {
+            return null;
+        }
+        foreach ($attempts as $attempt) {
+            if (($attempt['external_id'] ?? null) === $paid && is_string($attempt['payment_id'] ?? null)) {
+                return $attempt['payment_id'];
+            }
+        }
+        return null;
+    }
+
     public function sync(int $orderId, string $trigger): string
     {
         $wait = $trigger === self::TRIGGER_WEBHOOK ? self::WEBHOOK_LOCK_TIMEOUT_SECONDS : self::LOCK_TIMEOUT_SECONDS;
@@ -416,7 +434,7 @@ class OrderSync
         $payment->setIsTransactionClosed(true);
         $payment->registerCaptureNotification($order->getBaseTotalDue(), true);
         // The shopper can switch methods inside the payment form, so the checkout pick is not necessarily what paid.
-        $paidWith = $found->paidWith();
+        $paidWith = $found->paidWith(fn (string $text, mixed ...$args) => (string) __($text, ...$args));
         if ($paidWith !== null) {
             $payment->setAdditionalInformation(self::PAID_WITH, $paidWith);
             $order->addCommentToStatusHistory(__('Reservepay payment %1 paid with %2.', $found->paymentId, $paidWith));

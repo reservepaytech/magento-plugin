@@ -30,3 +30,7 @@
 "Updated %1 minutes ago.","อัปเดตเมื่อ %1 นาทีที่แล้ว"
 "Updated %1.","อัปเดตเมื่อ %1"
 "A Reservepay payment session was still open when the shopper left. If it is paid later, this order is flagged for a refund.","ยังมีเซสชันการชำระเงิน Reservepay ที่เปิดอยู่เมื่อผู้ซื้อออกไป หากมีการชำระในภายหลัง คำสั่งซื้อนี้จะถูกทำเครื่องหมายให้คืนเงิน"
+"Installment","ผ่อนชำระ"
+"%1 months","%1 เดือน"
+"Payment ID","รหัสการชำระเงิน"
+"Open in the Reservepay dashboard","เปิดใน Reservepay dashboard"

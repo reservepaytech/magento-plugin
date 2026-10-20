@@ -6,8 +6,10 @@ require __DIR__ . '/../Model/Thb.php';
 require __DIR__ . '/../Model/ExternalId.php';
 require __DIR__ . '/../Model/Api/FoundPayment.php';
 require __DIR__ . '/../Model/OrderSync.php';
+require __DIR__ . '/../Model/Config.php';
 
 use Reservepay\Payment\Model\Api\FoundPayment;
+use Reservepay\Payment\Model\Config;
 use Reservepay\Payment\Model\ExternalId;
 use Reservepay\Payment\Model\OrderSync;
 use Reservepay\Payment\Model\StatusMap;
@@ -88,12 +90,46 @@ foreach (['PENDING' => true, 'AUTHORIZED' => true, 'SUCCESSFUL' => false, 'FAILE
 }
 check('open payment before its expiry is resumable', $payment('PENDING', 1001)->resumable(1000), true);
 check('open payment at its expiry is not resumable', $payment('PENDING', 1000)->resumable(1000), false);
-$method = fn (?string $code, ?string $name) => (new FoundPayment('pay_1', 'x', 'pse_1', 'SUCCESSFUL', 100, 'THB', $code, $name))->paidWith();
-check('paid with: display name only', $method('PROMPTPAY', 'PromptPay'), 'PromptPay');
-check('paid with: code when there is no display name', $method('CARD', null), 'CARD');
-check('paid with: nothing reported', $method(null, null), null);
-check('paid with: display name from find-payment', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'SUCCESSFUL', 'amount' => 1, 'currency' => 'THB', 'payment_method' => 'CARD', 'payment_method_display_name' => 'Card'])->paidWith(), 'Card');
-check('paid with: empty display name falls back to the code', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'SUCCESSFUL', 'amount' => 1, 'currency' => 'THB', 'payment_method' => 'CARD', 'payment_method_display_name' => ''])->paidWith(), 'CARD');
+$thai = fn (string $text, mixed ...$args) => strtr(['Installment' => 'ผ่อนชำระ', '%1 months' => '%1 เดือน'][$text] ?? $text, ['%1' => $args[0] ?? '']);
+$paidWith = fn (array $fields) => FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'SUCCESSFUL', 'amount' => 1, 'currency' => 'THB'] + $fields)->paidWith($thai);
+$card = ['payment_method' => 'CARD', 'payment_method_display_name' => 'Card'];
+check('paid with: card network and last digits', $paidWith($card + ['card_network' => 'visa', 'card_last_digits' => '02']), 'Visa •• 02');
+check('paid with: network names', array_map(fn ($n) => $paidWith(['card_network' => $n, 'card_last_digits' => '11']), ['mastercard', 'JCB', 'amex', 'unionpay']), ['Mastercard •• 11', 'JCB •• 11', 'American Express •• 11', 'UnionPay •• 11']);
+check('paid with: unknown network uses the display name', $paidWith($card + ['card_network' => 'discover', 'card_last_digits' => '02']), 'Card •• 02');
+check('paid with: card without last digits', $paidWith($card + ['card_network' => 'visa', 'card_last_digits' => null]), 'Visa');
+check('paid with: installment bank and term, translated', $paidWith(['payment_method' => 'INSTALLMENT', 'payment_method_display_name' => 'Installment', 'card_network' => 'visa', 'card_last_digits' => '02', 'installment_bank_display_name' => 'Krungsri', 'installment_term' => 10]), 'ผ่อนชำระ · Krungsri · 10 เดือน');
+check('paid with: installment without a bank', $paidWith(['payment_method' => 'INSTALLMENT', 'installment_term' => 6]), 'ผ่อนชำระ · 6 เดือน');
+check('paid with: installment with nothing else', $paidWith(['payment_method' => 'INSTALLMENT']), 'ผ่อนชำระ');
+check('paid with: display name', $paidWith(['payment_method' => 'PROMPTPAY', 'payment_method_display_name' => 'PromptPay']), 'PromptPay');
+check('paid with: empty display name falls back to the code', $paidWith(['payment_method' => 'CARD', 'payment_method_display_name' => '']), 'CARD');
+check('paid with: nothing reported', $paidWith([]), null);
+
+check('paid payment id: the paying attempt', OrderSync::paidPaymentId([
+    OrderSync::PAID_ATTEMPT => 'm2-shop-a1b2_order_1_2',
+    OrderSync::ATTEMPTS => [
+        ['external_id' => 'm2-shop-a1b2_order_1_1', 'payment_id' => 'pay_1'],
+        ['external_id' => 'm2-shop-a1b2_order_1_2', 'payment_id' => 'pay_2'],
+    ],
+]), 'pay_2');
+check('paid payment id: unpaid order', OrderSync::paidPaymentId([OrderSync::ATTEMPTS => [['external_id' => 'x', 'payment_id' => 'pay_1']]]), null);
+check('paid payment id: order from before attempts', OrderSync::paidPaymentId(['method_title' => 'Reservepay']), null);
+
+check('dashboard payment url', Config::dashboardPaymentUrl('https://dashboard.reservepay.com', '123456', 'pay_abc'), 'https://dashboard.reservepay.com/merchants/live/123456/transactions/payments/pay_abc');
+check('dashboard payment url encodes ids', Config::dashboardPaymentUrl('https://dashboard.example.com', 'a/b', 'pay 1'), 'https://dashboard.example.com/merchants/live/a%2Fb/transactions/payments/pay%201');
+foreach ([
+    'https://dashboard.example.com' => true,
+    'http://localhost:5174' => true,
+    'http://dashboard.localhost' => true,
+    'http://host.docker.internal:3000' => true,
+    'http://dashboard.example.com' => false,
+    'javascript:alert(1)' => false,
+    'dashboard.example.com' => false,
+    '' => false,
+    'http:///nohost' => false,
+] as $url => $safe) {
+    check("override allowed: $url", Config::isSafeOverride($url), $safe);
+}
+
 check('find-payment expires_at is read', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'PENDING', 'amount' => 1, 'currency' => 'THB', 'expires_at' => 1234])->expiresAt, 1234);
 check('find-payment without expires_at', FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'PENDING', 'amount' => 1, 'currency' => 'THB'])->expiresAt, null);
 
