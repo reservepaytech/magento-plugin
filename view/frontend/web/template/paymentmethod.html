@@ -1,4 +1,4 @@
-<div class="payment-method" data-bind="css: {'_active': (getCode() == isChecked())}">
+<div class="payment-method" data-bind="css: {'_active': (getCode() === isChecked())}">
     <div class="payment-method-title field choice">
         <input type="radio"
                name="payment[method]"
@@ -8,6 +8,22 @@
         <label class="label" data-bind="attr: {'for': getCode()}">
             <span data-bind="text: getTitle()"></span>
         </label>
+        <!-- ko if: categories().length -->
+        <details class="reservepay-categories">
+            <summary>
+                <span data-bind="text: categoryLabels()"></span>
+                <span class="reservepay-chevron" aria-hidden="true"></span>
+            </summary>
+            <ul data-bind="foreach: categories">
+                <li class="reservepay-category">
+                    <span class="reservepay-category-label" data-bind="text: label"></span>
+                    <span class="reservepay-category-logos" data-bind="foreach: logos">
+                        <img class="reservepay-logo" data-bind="attr: {src: src, alt: name, title: name}" width="24" height="24"/>
+                    </span>
+                </li>
+            </ul>
+        </details>
+        <!-- /ko -->
     </div>
 
     <div class="payment-method-content">

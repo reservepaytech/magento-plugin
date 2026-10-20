@@ -1,0 +1,36 @@
+<?php
+/** @var \Reservepay\Payment\Block\Adminhtml\RefreshPaymentMethods $block */
+/** @var \Magento\Framework\Escaper $escaper */
+$init = $block->getData('init');
+$mageInit = $init === null ? '' : json_encode(['Reservepay_Payment/js/payment-methods' => $init]);
+$names = $block->getData('names');
+$updated = $block->getData('updated');
+?>
+<div class="reservepay-payment-methods">
+<?php if ($init === null): ?>
+    <p><?= $escaper->escapeHtml(__('Not fetched yet. Click Refresh payment methods.')) ?></p>
+<?php else: ?>
+    <div data-mage-init="<?= $escaper->escapeHtmlAttr($mageInit) ?>">
+        <p data-role="checking"><?= $escaper->escapeHtml(__('Checking...')) ?></p>
+        <table class="admin__table-secondary" data-role="categories" hidden>
+            <thead>
+                <tr>
+                    <th><?= $escaper->escapeHtml(__('Category')) ?></th>
+                    <th><?= $escaper->escapeHtml(__('Methods')) ?></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div data-role="fallback" hidden>
+            <?php if ($names): ?>
+                <p><?= $escaper->escapeHtml(implode(', ', $names)) ?></p>
+            <?php endif; ?>
+            <p class="note"><span><?= $escaper->escapeHtml(__('Logos appear once the Reservepay SDK is updated.')) ?></span></p>
+        </div>
+    </div>
+    <?php if ($updated !== null): ?>
+        <p class="note"><span><?= $escaper->escapeHtml($updated) ?></span></p>
+    <?php endif; ?>
+<?php endif; ?>
+    <?= /* @noEscape */ $block->getData('button') ?>
+</div>

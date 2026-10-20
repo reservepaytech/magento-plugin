@@ -1,0 +1,98 @@
+.reservepay-payment {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.reservepay-payment-back {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.reservepay-payment-back .action-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: inherit;
+    font-weight: 400;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.reservepay-payment-back .action-link:hover,
+.reservepay-payment-back .action-link:focus,
+.reservepay-payment-back .action-link:active {
+    box-shadow: none;
+    color: inherit;
+    background: none;
+    border: 0;
+    text-decoration: none;
+}
+
+.reservepay-payment-frame {
+    position: relative;
+}
+
+.reservepay-payment-frame.is-covered {
+    min-height: 240px;
+}
+
+.reservepay-payment-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px 16px;
+    background: #fff;
+    text-align: center;
+    cursor: wait;
+}
+
+/* Theme rules such as .action.primary set display, which would override the hidden attribute. */
+.reservepay-payment [hidden],
+.reservepay-payment .action.primary[hidden] {
+    display: none;
+}
+
+.reservepay-payment-overlay:focus {
+    outline: none;
+}
+
+.reservepay-payment-overlay p {
+    max-width: 360px;
+    margin: 0;
+}
+
+.reservepay-payment-status {
+    font-weight: 600;
+}
+
+.reservepay-payment-order {
+    cursor: pointer;
+}
+
+.reservepay-payment-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(0, 0, 0, 0.15);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: reservepay-spin 0.8s linear infinite;
+}
+
+@keyframes reservepay-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reservepay-payment-spinner {
+        animation-duration: 2.4s;
+    }
+}

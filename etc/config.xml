@@ -1,16 +1,31 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Payment:etc/payment.xsd">
-
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
         <payment>
             <reservepay_payment>
                 <active>0</active>
-                <title>Reservepay Payment Service</title>
+                <title>Pay with Reservepay</title>
                 <model>Reservepay\Payment\Model\PaymentMethod</model>
-                <order_status>pending_payment</order_status>
+                <!-- Any value makes Magento call PaymentMethod::initialize() when the order is placed. -->
+                <payment_action>authorize_capture</payment_action>
             </reservepay_payment>
         </payment>
+        <!-- The payment form page gets the same enforced, nonce-only script policy as Magento's own checkout page. -->
+        <csp>
+            <mode>
+                <storefront_reservepay_payment_form>
+                    <report_only>0</report_only>
+                </storefront_reservepay_payment_form>
+            </mode>
+            <policies>
+                <storefront_reservepay_payment_form>
+                    <scripts>
+                        <inline>0</inline>
+                        <event_handlers>1</event_handlers>
+                    </scripts>
+                </storefront_reservepay_payment_form>
+            </policies>
+        </csp>
     </default>
-
 </config>
