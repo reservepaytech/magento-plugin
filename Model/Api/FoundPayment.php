@@ -54,18 +54,29 @@ class FoundPayment
     public function paidWith(callable $phrase): ?string
     {
         if (strtoupper((string) $this->paymentMethod) === 'INSTALLMENT' || $this->installmentTerm !== null) {
-            return implode(' · ', array_filter([
-                $phrase('Installment'),
+            return self::withDetail((string) $phrase('Installment'), [
                 $this->installmentBank,
-                $this->installmentTerm !== null ? $phrase('%1 months', $this->installmentTerm) : null,
-            ]));
+                $this->installmentTerm !== null ? (string) $phrase('%1 months', $this->installmentTerm) : null,
+            ]);
         }
         $name = $this->paymentMethodDisplayName ?? $this->paymentMethod;
         if ($this->cardNetwork !== null) {
-            $network = self::CARD_NETWORKS[strtolower($this->cardNetwork)] ?? $name ?? $this->cardNetwork;
-            return $this->cardLastDigits !== null ? $network . ' •• ' . $this->cardLastDigits : $network;
+            $card = trim((self::CARD_NETWORKS[strtolower($this->cardNetwork)] ?? '')
+                . ($this->cardLastDigits !== null ? ' •• ' . $this->cardLastDigits : ''));
+            return self::withDetail($name ?? (string) $phrase('Card'), [$card]);
         }
         return $name;
+    }
+
+    /**
+     * "Card (Visa •• 02)", "Installment (Krungsri, 10 months)", or the method alone when there is no detail.
+     *
+     * @param array<?string> $details
+     */
+    private static function withDetail(string $method, array $details): string
+    {
+        $details = array_filter($details, fn (?string $detail) => $detail !== null && $detail !== '');
+        return $details ? $method . ' (' . implode(', ', $details) . ')' : $method;
     }
 
     /**

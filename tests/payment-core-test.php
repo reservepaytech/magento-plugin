@@ -93,12 +93,12 @@ check('open payment at its expiry is not resumable', $payment('PENDING', 1000)->
 $thai = fn (string $text, mixed ...$args) => strtr(['Installment' => 'ผ่อนชำระ', '%1 months' => '%1 เดือน'][$text] ?? $text, ['%1' => $args[0] ?? '']);
 $paidWith = fn (array $fields) => FoundPayment::fromResponse(['payment_id' => 'pay_1', 'status' => 'SUCCESSFUL', 'amount' => 1, 'currency' => 'THB'] + $fields)->paidWith($thai);
 $card = ['payment_method' => 'CARD', 'payment_method_display_name' => 'Card'];
-check('paid with: card network and last digits', $paidWith($card + ['card_network' => 'visa', 'card_last_digits' => '02']), 'Visa •• 02');
-check('paid with: network names', array_map(fn ($n) => $paidWith(['card_network' => $n, 'card_last_digits' => '11']), ['mastercard', 'JCB', 'amex', 'unionpay']), ['Mastercard •• 11', 'JCB •• 11', 'American Express •• 11', 'UnionPay •• 11']);
-check('paid with: unknown network uses the display name', $paidWith($card + ['card_network' => 'discover', 'card_last_digits' => '02']), 'Card •• 02');
-check('paid with: card without last digits', $paidWith($card + ['card_network' => 'visa', 'card_last_digits' => null]), 'Visa');
-check('paid with: installment bank and term, translated', $paidWith(['payment_method' => 'INSTALLMENT', 'payment_method_display_name' => 'Installment', 'card_network' => 'visa', 'card_last_digits' => '02', 'installment_bank_display_name' => 'Krungsri', 'installment_term' => 10]), 'ผ่อนชำระ · Krungsri · 10 เดือน');
-check('paid with: installment without a bank', $paidWith(['payment_method' => 'INSTALLMENT', 'installment_term' => 6]), 'ผ่อนชำระ · 6 เดือน');
+check('paid with: card network and last digits', $paidWith($card + ['card_network' => 'visa', 'card_last_digits' => '02']), 'Card (Visa •• 02)');
+check('paid with: network names', array_map(fn ($n) => $paidWith(['card_network' => $n, 'card_last_digits' => '11']), ['mastercard', 'JCB', 'amex', 'unionpay']), ['Card (Mastercard •• 11)', 'Card (JCB •• 11)', 'Card (American Express •• 11)', 'Card (UnionPay •• 11)']);
+check('paid with: unknown network keeps the digits', $paidWith($card + ['card_network' => 'discover', 'card_last_digits' => '02']), 'Card (•• 02)');
+check('paid with: card without last digits', $paidWith($card + ['card_network' => 'visa', 'card_last_digits' => null]), 'Card (Visa)');
+check('paid with: installment bank and term, translated', $paidWith(['payment_method' => 'INSTALLMENT', 'payment_method_display_name' => 'Installment', 'card_network' => 'visa', 'card_last_digits' => '02', 'installment_bank_display_name' => 'Krungsri', 'installment_term' => 10]), 'ผ่อนชำระ (Krungsri, 10 เดือน)');
+check('paid with: installment without a bank', $paidWith(['payment_method' => 'INSTALLMENT', 'installment_term' => 6]), 'ผ่อนชำระ (6 เดือน)');
 check('paid with: installment with nothing else', $paidWith(['payment_method' => 'INSTALLMENT']), 'ผ่อนชำระ');
 check('paid with: display name', $paidWith(['payment_method' => 'PROMPTPAY', 'payment_method_display_name' => 'PromptPay']), 'PromptPay');
 check('paid with: empty display name falls back to the code', $paidWith(['payment_method' => 'CARD', 'payment_method_display_name' => '']), 'CARD');
