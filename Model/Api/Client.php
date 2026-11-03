@@ -70,7 +70,7 @@ class Client
         $apiKey = $this->config->apiKey($storeId);
         if ($apiKey === '') {
             $this->logger->critical('Reservepay API key is missing or cannot be decrypted', ['store_id' => $storeId]);
-            throw new ApiException(ApiException::CONFIG, 'Reservepay is not configured');
+            throw new ApiException(ApiException::CONFIG, 'Reservepay is not configured', true);
         }
         return $this->request($storeId, $path, $args, ['Authorization' => 'Bearer ' . $apiKey], self::TIMEOUT_SECONDS);
     }
@@ -91,8 +91,18 @@ class Client
         try {
             $curl->post(rtrim($this->config->apiBaseUrl($storeId), '/') . '/' . $path, json_encode($args, JSON_THROW_ON_ERROR));
         } catch (\Exception $e) {
-            $this->logger->warning('Reservepay request failed in transport', ['path' => $path, 'error' => $e->getMessage()]);
-            throw new ApiException(ApiException::TRANSPORT, 'Reservepay request failed in transport');
+            // Curl puts the cURL error number in the code. A JsonException's code is a JSON error number instead.
+            $curlError = $e instanceof \JsonException ? 0 : (int) $e->getCode();
+            $this->logger->warning('Reservepay request failed in transport', [
+                'path' => $path,
+                'curl_error' => $curlError,
+                'error' => $e->getMessage(),
+            ]);
+            throw new ApiException(
+                ApiException::TRANSPORT,
+                'Reservepay request failed in transport',
+                self::notProcessed($curlError, 0)
+            );
         }
 
         $status = $curl->getStatus();
@@ -100,7 +110,11 @@ class Client
             $body = json_decode($curl->getBody(), true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             $this->logger->error('Reservepay returned a body that is not JSON', ['path' => $path, 'http_status' => $status]);
-            throw new ApiException(ApiException::BAD_RESPONSE, 'Reservepay returned a body that is not JSON');
+            throw new ApiException(
+                ApiException::BAD_RESPONSE,
+                'Reservepay returned a body that is not JSON',
+                self::notProcessed(0, $status)
+            );
         }
 
         if ($status === 200) {
@@ -115,6 +129,19 @@ class Client
             'code' => $code,
             'message' => $isTriple && is_string($body[1] ?? null) ? $body[1] : null,
         ]);
-        throw new ApiException($code, 'Reservepay returned ' . $code);
+        throw new ApiException($code, 'Reservepay returned ' . $code, self::notProcessed(0, $status));
+    }
+
+    /**
+     * True when a failed call provably never reached Reservepay's processing, so Reservepay created nothing for it:
+     * cURL could not resolve the host (6) or connect (7), or the key was refused or a firewall blocked the request
+     * (HTTP 401 or 403). A timeout, a 5xx or an error triple may come after Reservepay acted on the request.
+     *
+     * @param int $curlError the cURL error number, 0 when the call got an HTTP answer
+     * @param int $httpStatus the HTTP status, 0 when the call got none
+     */
+    public static function notProcessed(int $curlError, int $httpStatus): bool
+    {
+        return in_array($curlError, [6, 7], true) || in_array($httpStatus, [401, 403], true);
     }
 }

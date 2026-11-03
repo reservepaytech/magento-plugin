@@ -276,11 +276,12 @@ class OrderSync
         $payment = $order->getPayment();
         $attempts = $this->attempts($payment);
         $index = $this->indexOf($attempts, 'session_id', $sessionId);
-        if ($index === null && count($attempts) >= self::MAX_ATTEMPTS) {
+        $created = $index === null;
+        if ($created && count($attempts) >= self::MAX_ATTEMPTS) {
             $this->logger->warning('Reservepay attempt limit reached', ['order' => $order->getIncrementId()]);
             return false;
         }
-        if ($index === null) {
+        if ($created) {
             // Saved before initiate, so a payment that initiate creates is always on record for the reconciler.
             $externalId = $this->externalId->forAttempt(
                 (string) $order->getIncrementId(),
@@ -303,6 +304,19 @@ class OrderSync
         try {
             $paymentId = $this->initiate($order, $attempt);
         } catch (ApiException $e) {
+            // Nothing exists under its external id, so keeping it would spend one of MAX_ATTEMPTS and keep the
+            // reconciler looking it up. An attempt made earlier and retried here may have reached Reservepay then.
+            $drop = $created && $e->notProcessed;
+            $this->logger->warning('Reservepay payment start failed' . ($drop ? ', attempt dropped' : ''), [
+                'order' => $order->getIncrementId(),
+                'external_id' => $attempt['external_id'],
+                'code' => $e->errorCode,
+            ]);
+            if ($drop) {
+                array_pop($attempts);
+                $payment->setAdditionalInformation(self::ATTEMPTS, $attempts);
+                $this->orderRepository->save($order);
+            }
             return false;
         }
         $attempts[$index]['payment_id'] = $paymentId;
@@ -335,7 +349,15 @@ class OrderSync
         } catch (ApiException $e) {
             // Reservepay answers NOT_FOUND when this session already has a payment, for example after an earlier
             // initiate timed out.
-            $found = $e->errorCode === 'NOT_FOUND' ? $this->findAttempt($order, $attempt) : null;
+            if ($e->errorCode !== 'NOT_FOUND') {
+                throw $e;
+            }
+            try {
+                $found = $this->findAttempt($order, $attempt);
+            } catch (ApiException) {
+                // The caller judges initiate's answer, which proves Reservepay processed the call, not the lookup's.
+                $found = null;
+            }
             if ($found === null) {
                 throw $e;
             }

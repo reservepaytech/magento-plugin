@@ -5,9 +5,11 @@ require __DIR__ . '/../Model/StatusMap.php';
 require __DIR__ . '/../Model/Thb.php';
 require __DIR__ . '/../Model/ExternalId.php';
 require __DIR__ . '/../Model/Api/FoundPayment.php';
+require __DIR__ . '/../Model/Api/Client.php';
 require __DIR__ . '/../Model/OrderSync.php';
 require __DIR__ . '/../Model/Config.php';
 
+use Reservepay\Payment\Model\Api\Client;
 use Reservepay\Payment\Model\Api\FoundPayment;
 use Reservepay\Payment\Model\Config;
 use Reservepay\Payment\Model\ExternalId;
@@ -153,5 +155,19 @@ check('every attempt failed, the shopper may cancel', OrderSync::shopperMayCance
 check('an open payment does not stop the shopper cancelling', OrderSync::shopperMayCancel('open', true), true);
 check('an unknown answer keeps the order', OrderSync::shopperMayCancel('unknown', true), false);
 check('a paid order is never cancelled', OrderSync::shopperMayCancel('paid', true), false);
+
+check('not processed: host not resolved (cURL 6)', Client::notProcessed(6, 0), true);
+check('not processed: connection refused (cURL 7)', Client::notProcessed(7, 0), true);
+check('not processed: key refused (401)', Client::notProcessed(0, 401), true);
+check('not processed: blocked (403)', Client::notProcessed(0, 403), true);
+check('maybe processed: timeout may have arrived (cURL 28)', Client::notProcessed(28, 0), false);
+check('maybe processed: TLS failure after connecting (cURL 35)', Client::notProcessed(35, 0), false);
+check('maybe processed: empty reply (cURL 52)', Client::notProcessed(52, 0), false);
+check('maybe processed: no cURL error number (0)', Client::notProcessed(0, 0), false);
+check('maybe processed: business error (400)', Client::notProcessed(0, 400), false);
+check('maybe processed: NOT_FOUND (404)', Client::notProcessed(0, 404), false);
+check('maybe processed: server error (500)', Client::notProcessed(0, 500), false);
+check('maybe processed: bad gateway (502)', Client::notProcessed(0, 502), false);
+check('maybe processed: gateway timeout (504)', Client::notProcessed(0, 504), false);
 
 done();
