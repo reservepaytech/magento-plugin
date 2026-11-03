@@ -24,6 +24,7 @@ use Reservepay\Payment\Model\Api\FoundPayment;
  *
  * Stored in the order payment's additional_information:
  *   reservepay_attempts:       [{external_id: "m2-<host>-<hex>_order_<increment id>_<n>", payment_id: "pay_..."|null, session_id, created_at}]
+ *                              plus unreached: true on an attempt Reservepay still could not find an hour later
  *   reservepay_paid_attempt:   external_id of the attempt that paid the order, set once
  *   reservepay_extra_captures: payment ids captured for this order that the order did not take, flagged for a refund
  *   reservepay_paid_with:      what the paying attempt used, from find-payment, for example "Visa •• 02" or "PromptPay"
@@ -52,8 +53,9 @@ class OrderSync
     public const LAST_CHECKED = 'reservepay_last_checked';
     public const NEVER_CHECKED = '1970-01-01 00:00:00';
 
-    // An attempt with no payment id that Reservepay still does not know after this long never reached it.
-    private const NEVER_REACHED_SECONDS = 24 * 3600;
+    // An attempt with no payment id that Reservepay still does not know after this long never reached it: Reservepay
+    // stores the payment before initiate-payment-flow answers, so it is findable from then on.
+    private const NEVER_REACHED_SECONDS = 3600;
     // How long a paid or cancelled order keeps watching its other attempts for a capture.
     private const WATCH_SECONDS = 72 * 3600;
 
@@ -172,7 +174,7 @@ class OrderSync
             $order = $this->load($orderId);
             $outcome = $this->syncLocked($order, $trigger);
             if (in_array($trigger, self::FULL_CHECK_TRIGGERS, true)) {
-                $this->leaveReconcilerWhenStale($order);
+                $this->leaveReconcilerWhenDone($order);
             }
             return $outcome;
         }, $wait) ?? StatusMap::UNKNOWN;
@@ -189,7 +191,7 @@ class OrderSync
             $order = $this->load($orderId);
             $flaggedBefore = $this->flagged($order->getPayment());
             $outcome = $this->syncLocked($order, self::TRIGGER_MANUAL);
-            $this->leaveReconcilerWhenStale($order);
+            $this->leaveReconcilerWhenDone($order);
             $newlyFlagged = $this->flagged($order->getPayment()) !== $flaggedBefore;
             $note = match (true) {
                 $newlyFlagged => __('Checked with Reservepay: a captured payment needs your attention, see the other notes.'),
@@ -281,6 +283,7 @@ class OrderSync
             $this->logger->warning('Reservepay attempt limit reached', ['order' => $order->getIncrementId()]);
             return false;
         }
+        $restarted = !$created && $attempts[$index]['payment_id'] === null && !empty($attempts[$index]['unreached']);
         if ($created) {
             // Saved before initiate, so a payment that initiate creates is always on record for the reconciler.
             $externalId = $this->externalId->forAttempt(
@@ -290,6 +293,12 @@ class OrderSync
             );
             $attempts[] = $this->newAttempt($externalId, $sessionId);
             $index = array_key_last($attempts);
+        } elseif ($restarted) {
+            // Initiated again, so it may reach Reservepay this time: it is looked up again, and its hour starts over.
+            unset($attempts[$index]['unreached']);
+            $attempts[$index]['created_at'] = time();
+        }
+        if ($created || $restarted) {
             $payment->setAdditionalInformation(self::ATTEMPTS, $attempts);
             if ($payment->getData(self::LAST_CHECKED) === null) {
                 $payment->setData(self::LAST_CHECKED, self::NEVER_CHECKED);
@@ -387,6 +396,10 @@ class OrderSync
         $outcomes = [];
         $unpaidCharge = null;
         foreach (array_reverse($this->attempts($payment)) as $attempt) {
+            if (!empty($attempt['unreached'])) {
+                $outcomes[] = StatusMap::FAILED;
+                continue;
+            }
             try {
                 $found = $this->findAttempt($order, $attempt);
             } catch (ApiException $e) {
@@ -394,7 +407,7 @@ class OrderSync
                 continue;
             }
             if ($found === null) {
-                $outcomes[] = $this->notFoundOutcome($order, $attempt);
+                $outcomes[] = $this->notFound($order, $attempt);
                 continue;
             }
             $outcome = StatusMap::outcome($found->status);
@@ -515,18 +528,63 @@ class OrderSync
 
     /**
      * Without a payment id, initiate may have timed out before Reservepay saw it. Once Reservepay still has no payment
-     * for the attempt a day later, it never will, so the attempt fails and the order can fail or be cleaned up.
+     * for the attempt an hour later, it never will, so the attempt fails and the order can fail or be cleaned up.
      */
-    private function notFoundOutcome(Order $order, array $attempt): string
+    public static function notFoundOutcome(array $attempt, int $now): string
     {
-        if ($attempt['payment_id'] !== null || $attempt['created_at'] > time() - self::NEVER_REACHED_SECONDS) {
-            return StatusMap::UNKNOWN;
+        return $attempt['payment_id'] === null && $now - $attempt['created_at'] >= self::NEVER_REACHED_SECONDS
+            ? StatusMap::FAILED
+            : StatusMap::UNKNOWN;
+    }
+
+    /**
+     * Marks an attempt that never reached Reservepay, so it is never looked up again.
+     */
+    private function notFound(Order $order, array $attempt): string
+    {
+        $outcome = self::notFoundOutcome($attempt, time());
+        if ($outcome !== StatusMap::FAILED) {
+            return $outcome;
         }
-        $this->logger->info('Reservepay attempt never reached Reservepay, counted as failed', [
+        $payment = $order->getPayment();
+        $attempts = $this->attempts($payment);
+        $attempts[$this->indexOf($attempts, 'external_id', $attempt['external_id'])]['unreached'] = true;
+        $payment->setAdditionalInformation(self::ATTEMPTS, $attempts);
+        $this->orderRepository->save($order);
+        $this->logger->info('Reservepay attempt never reached Reservepay, counted as failed and no longer checked', [
             'order' => $order->getIncrementId(),
             'external_id' => $attempt['external_id'],
         ]);
-        return StatusMap::FAILED;
+        return $outcome;
+    }
+
+    /**
+     * Another attempt of a paid order, or any attempt of a cancelled or held unpaid order, is looked up for a capture
+     * while it is younger than the watch window, unless it is already flagged or never reached Reservepay.
+     */
+    public static function needsLateCaptureCheck(array $attempt, ?string $paidAttempt, array $flagged, int $now): bool
+    {
+        return $attempt['external_id'] !== $paidAttempt
+            && empty($attempt['unreached'])
+            && !in_array($attempt['payment_id'], $flagged, true)
+            && $attempt['created_at'] >= $now - self::WATCH_SECONDS;
+    }
+
+    /**
+     * A paid order stays in the reconciler only while another attempt could still be captured. Any other order stays
+     * until its newest attempt is older than the watch window.
+     */
+    public static function stillWatched(array $attempts, ?string $paidAttempt, array $flagged, int $now): bool
+    {
+        if ($paidAttempt === null) {
+            return max([0, ...array_column($attempts, 'created_at')]) >= $now - self::WATCH_SECONDS;
+        }
+        foreach ($attempts as $attempt) {
+            if (self::needsLateCaptureCheck($attempt, $paidAttempt, $flagged, $now)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -537,15 +595,12 @@ class OrderSync
     private function flagExtraCaptures(Order $order): void
     {
         $payment = $order->getPayment();
-        $paidAttempt = $payment->getAdditionalInformation(self::PAID_ATTEMPT);
+        $paidAttempt = $this->paidAttempt($payment);
         $flagged = $this->flagged($payment);
         $before = count($flagged);
 
         foreach ($this->attempts($payment) as $attempt) {
-            if ($attempt['external_id'] === $paidAttempt
-                || in_array($attempt['payment_id'], $flagged, true)
-                || $attempt['created_at'] < time() - self::WATCH_SECONDS
-            ) {
+            if (!self::needsLateCaptureCheck($attempt, $paidAttempt, $flagged, time())) {
                 continue;
             }
             try {
@@ -553,8 +608,11 @@ class OrderSync
             } catch (ApiException $e) {
                 continue;
             }
-            if ($found === null
-                || !StatusMap::captured($found->status)
+            if ($found === null) {
+                $this->notFound($order, $attempt);
+                continue;
+            }
+            if (!StatusMap::captured($found->status)
                 || in_array($found->paymentId, $flagged, true)
             ) {
                 continue;
@@ -591,20 +649,22 @@ class OrderSync
     }
 
     /**
-     * Takes the order out of the reconciler once its newest attempt is older than the watch window.
-     *
-     * Nothing on it can change any more. A new attempt brings it back.
+     * Takes the order out of the reconciler once nothing on it can change any more (stillWatched()). A new attempt
+     * brings it back.
      */
-    private function leaveReconcilerWhenStale(Order $order): void
+    private function leaveReconcilerWhenDone(Order $order): void
     {
         $payment = $order->getPayment();
-        $newest = max([0, ...array_column($this->attempts($payment), 'created_at')]);
-        if ($newest >= time() - self::WATCH_SECONDS || $payment->getData(self::LAST_CHECKED) === null) {
+        if ($payment->getData(self::LAST_CHECKED) === null) {
+            return;
+        }
+        $attempts = $this->attempts($payment);
+        if (self::stillWatched($attempts, $this->paidAttempt($payment), $this->flagged($payment), time())) {
             return;
         }
         $payment->setData(self::LAST_CHECKED, null);
         $this->orderRepository->save($order);
-        $this->logger->info('Reservepay order left the reconciler, its attempts are too old to change', [
+        $this->logger->info('Reservepay order left the reconciler, nothing on it can change any more', [
             'order' => $order->getIncrementId(),
         ]);
     }
@@ -654,6 +714,12 @@ class OrderSync
     {
         $attempts = $payment->getAdditionalInformation(self::ATTEMPTS);
         return is_array($attempts) ? array_values($attempts) : [];
+    }
+
+    private function paidAttempt(Payment $payment): ?string
+    {
+        $paid = $payment->getAdditionalInformation(self::PAID_ATTEMPT);
+        return is_string($paid) ? $paid : null;
     }
 
     private function flagged(Payment $payment): array

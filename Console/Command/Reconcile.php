@@ -27,7 +27,7 @@ class Reconcile extends Command
     protected function configure(): void
     {
         $this->setName('reservepay:reconcile')
-            ->setDescription('Check Reservepay orders with an attempt from the last 72 hours with Reservepay, least recently checked first')
+            ->setDescription('Check Reservepay orders with Reservepay: recent ones every run, older ones hourly, least recently checked first')
             ->addOption(self::BATCH_SIZE, null, InputOption::VALUE_REQUIRED, 'Orders to check', '50');
     }
 
