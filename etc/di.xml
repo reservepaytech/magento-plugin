@@ -13,8 +13,15 @@
         </arguments>
     </virtualType>
 
+    <virtualType name="Reservepay\Payment\Model\Api\CurlFactory" type="Magento\Framework\HTTP\Client\CurlFactory">
+        <arguments>
+            <argument name="instanceName" xsi:type="string">Reservepay\Payment\Model\Api\Curl</argument>
+        </arguments>
+    </virtualType>
+
     <type name="Reservepay\Payment\Model\Api\Client">
         <arguments>
+            <argument name="curlFactory" xsi:type="object">Reservepay\Payment\Model\Api\CurlFactory</argument>
             <argument name="logger" xsi:type="object">Reservepay\Payment\Logger</argument>
         </arguments>
     </type>
