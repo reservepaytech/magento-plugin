@@ -85,7 +85,7 @@ Checkout offers one payment method, `reservepay_payment`, whenever Reservepay is
 | `PARTIALLY_REFUNDED`, `REFUNDED`, `DISPUTED` | Never pays the order. When no attempt is `SUCCESSFUL`, the order goes **On Hold** with a note naming the payment and its status, an error is logged, and the payment is recorded in `reservepay_extra_captures` |
 | `PENDING`, `AUTHORIZED` | No change. When the payment form reported success, the overlay on the payment form says "Your bank is still confirming the payment" with a **View order** link (the order in their account, or **Orders and Returns** for a guest), and the page keeps checking every 15 seconds |
 | `FAILED`, `EXPIRED`, `REVERSED`, `VOIDED` | No change. When the payment form reports a failure, it reloads for the same order with "Your payment did not go through", and the next payment is a new attempt |
-| Not found, or the API is unreachable | No change, logged. An attempt with no payment id that is still not found 24 hours after it started counts as failed, because it never reached Reservepay |
+| Not found, or the API is unreachable | No change, logged. An attempt with no payment id that is still not found 1 hour after it started never reached Reservepay, because Reservepay stores a payment before it answers the request that starts it. The attempt is marked `unreached`, counts as failed, and is never looked up again. Starting it again with the same payment session clears the mark |
 
 A successful payment that is not in THB, or whose amount does not match the order's grand total, puts the order **On Hold** with a note, logs an error, and is recorded in `reservepay_extra_captures`, so the reconciler does not flag it again.
 
@@ -114,7 +114,9 @@ Only the browser session that placed the order can use it, because the token alo
 
 ## Reconciliation
 
-The cron job `reservepay_reconcile_orders` (group `default`, every 5 minutes) needs Magento cron to run. Each run checks one batch of 50 Reservepay orders, least recently checked first. An order takes part from its first attempt until it is paid by its only attempt, or until its newest attempt is 72 hours old, however old the order itself is. A new attempt brings it back. The time of each check is kept in `sales_order_payment.reservepay_last_checked`, which is empty for an order that takes no part. An order whose check fails is logged and sent to the back of the queue, and the rest of the batch still runs.
+The cron job `reservepay_reconcile_orders` (group `default`, every 5 minutes) needs Magento cron to run. Each run checks one batch of 50 Reservepay orders, least recently checked first. An order takes part from its first attempt until nothing on it can change any more: it is paid and no other attempt can still be captured, or its newest attempt is 72 hours old, however old the order itself is. A new attempt brings it back.
+
+An order whose newest attempt is less than an hour old is checked on every run. An older one is checked at most once an hour, and older orders get up to half of each batch, so a busy hour of new orders cannot hold them back. A run stops early, and logs why, after the first order whose check found Reservepay unavailable (no answer, or an HTTP 5xx), and starts no new order after 20 seconds. The orders it did not reach go first on the next run. The time of each check is kept in `sales_order_payment.reservepay_last_checked`, which is empty for an order that takes no part. An order whose check fails is logged and sent to the back of the queue, and the rest of the batch still runs.
 
 | Order | What the check does |
 |---|---|
@@ -129,7 +131,7 @@ A captured payment is one that is `SUCCESSFUL`, `PARTIALLY_REFUNDED`, `REFUNDED`
 *   Cancelled order: "Reservepay payment `pay_...` was paid after this order was cancelled. Refund it in the Reservepay dashboard or reinstate the order."
 *   Unpaid order on hold: "Reservepay payment `pay_...` was captured while this order is on hold. Check it before releasing the hold, or refund it in the Reservepay dashboard."
 
-The flagged payment ids are kept in the order payment's `reservepay_extra_captures`. Attempts older than 72 hours are no longer checked.
+The flagged payment ids are kept in the order payment's `reservepay_extra_captures`. Attempts older than 72 hours, and attempts marked `unreached`, are no longer checked.
 
 Magento's own `sales_clean_orders` cron cancels Pending Payment orders after **Stores > Configuration > Sales > Sales > Orders Cron Settings > Pending Payment Order Lifetime** (480 minutes by default). That is why cancelled orders are watched.
 

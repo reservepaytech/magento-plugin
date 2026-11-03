@@ -15,6 +15,8 @@ class Client
     // The checkout page waits for this call when its cache is cold.
     private const CHECKOUT_TIMEOUT_SECONDS = 5;
 
+    private int $unavailable = 0;
+
     public function __construct(
         private readonly CurlFactory $curlFactory,
         private readonly Config $config,
@@ -93,6 +95,7 @@ class Client
         } catch (\Exception $e) {
             // Curl puts the cURL error number in the code. A JsonException's code is a JSON error number instead.
             $curlError = $e instanceof \JsonException ? 0 : (int) $e->getCode();
+            $this->unavailable++;
             $this->logger->warning('Reservepay request failed in transport', [
                 'path' => $path,
                 'curl_error' => $curlError,
@@ -106,6 +109,9 @@ class Client
         }
 
         $status = $curl->getStatus();
+        if ($status >= 500) {
+            $this->unavailable++;
+        }
         try {
             $body = json_decode($curl->getBody(), true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
@@ -130,6 +136,14 @@ class Client
             'message' => $isTriple && is_string($body[1] ?? null) ? $body[1] : null,
         ]);
         throw new ApiException($code, 'Reservepay returned ' . $code, self::notProcessed(0, $status));
+    }
+
+    /**
+     * How many requests from this process got no answer, or a 5xx, from Reservepay.
+     */
+    public function unavailableCount(): int
+    {
+        return $this->unavailable;
     }
 
     /**

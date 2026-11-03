@@ -8,7 +8,9 @@ require __DIR__ . '/../Model/Api/FoundPayment.php';
 require __DIR__ . '/../Model/Api/Client.php';
 require __DIR__ . '/../Model/OrderSync.php';
 require __DIR__ . '/../Model/Config.php';
+require __DIR__ . '/../Cron/Reconcile.php';
 
+use Reservepay\Payment\Cron\Reconcile;
 use Reservepay\Payment\Model\Api\Client;
 use Reservepay\Payment\Model\Api\FoundPayment;
 use Reservepay\Payment\Model\Config;
@@ -169,5 +171,35 @@ check('maybe processed: NOT_FOUND (404)', Client::notProcessed(0, 404), false);
 check('maybe processed: server error (500)', Client::notProcessed(0, 500), false);
 check('maybe processed: bad gateway (502)', Client::notProcessed(0, 502), false);
 check('maybe processed: gateway timeout (504)', Client::notProcessed(0, 504), false);
+
+$now = 1_800_000_000;
+$hour = 3600;
+$noPayId = ['external_id' => 'm2-shop-a1b2_order_7_2', 'payment_id' => null, 'session_id' => 'pse_2'];
+check('not found, no payment id, exactly 1 h: never reached', OrderSync::notFoundOutcome(['created_at' => $now - $hour] + $noPayId, $now), 'failed');
+check('not found, no payment id, 59 min: may still appear', OrderSync::notFoundOutcome(['created_at' => $now - $hour + 60] + $noPayId, $now), 'unknown');
+check('not found with a payment id: never written off', OrderSync::notFoundOutcome(['created_at' => $now - 100 * $hour, 'payment_id' => 'pay_2'] + $noPayId, $now), 'unknown');
+
+$paidAttempt = ['external_id' => 'm2-shop-a1b2_order_7_1', 'payment_id' => 'pay_1', 'session_id' => 'pse_1', 'created_at' => $now - 2 * $hour];
+$other = ['created_at' => $now - 2 * $hour] + $noPayId;
+$paidId = $paidAttempt['external_id'];
+check('late check: another attempt of a paid order', OrderSync::needsLateCaptureCheck($other, $paidId, [], $now), true);
+check('late check: the paid attempt', OrderSync::needsLateCaptureCheck($paidAttempt, $paidId, [], $now), false);
+check('late check: unreached attempt', OrderSync::needsLateCaptureCheck(['unreached' => true] + $other, $paidId, [], $now), false);
+check('late check: flagged payment', OrderSync::needsLateCaptureCheck(['payment_id' => 'pay_2'] + $other, $paidId, ['pay_2'], $now), false);
+check('late check: exactly 72 h old', OrderSync::needsLateCaptureCheck(['created_at' => $now - 72 * $hour] + $other, $paidId, [], $now), true);
+check('late check: older than 72 h', OrderSync::needsLateCaptureCheck(['created_at' => $now - 72 * $hour - 1] + $other, $paidId, [], $now), false);
+check('late check: cancelled unpaid order', OrderSync::needsLateCaptureCheck($other, null, [], $now), true);
+
+check('watched: paid, another attempt can be captured', OrderSync::stillWatched([$paidAttempt, $other], $paidId, [], $now), true);
+check('watched: paid, other attempt unreached', OrderSync::stillWatched([$paidAttempt, ['unreached' => true] + $other], $paidId, [], $now), false);
+check('watched: paid, other attempt flagged', OrderSync::stillWatched([$paidAttempt, ['payment_id' => 'pay_2'] + $other], $paidId, ['pay_2'], $now), false);
+check('watched: unpaid, every attempt unreached, inside 72 h', OrderSync::stillWatched([['unreached' => true] + $other], null, [], $now), true);
+check('watched: unpaid, newest attempt older than 72 h', OrderSync::stillWatched([['created_at' => $now - 73 * $hour] + $other], null, [], $now), false);
+check('watched: unpaid, a re-initiated older attempt keeps it', OrderSync::stillWatched([['created_at' => $now] + $other, ['created_at' => $now - 73 * $hour] + $noPayId], null, [], $now), true);
+check('watched: no attempts left', OrderSync::stillWatched([], null, [], $now), false);
+
+check('batch: recent and older interleaved', Reconcile::interleave([11 => 'a', 12 => 'b', 13 => 'c'], [21 => 'x']), [11 => 'a', 21 => 'x', 12 => 'b', 13 => 'c']);
+check('batch: only older', Reconcile::interleave([], [21 => 'x', 22 => 'y']), [21 => 'x', 22 => 'y']);
+check('batch: empty', Reconcile::interleave([], []), []);
 
 done();
